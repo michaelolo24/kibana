@@ -6,7 +6,7 @@
 
 /* eslint-disable react/display-name */
 
-import React, { memo, useMemo, HTMLAttributes } from 'react';
+import React, { memo, useMemo, useState, HTMLAttributes } from 'react';
 import { useSelector } from 'react-redux';
 import { i18n } from '@kbn/i18n';
 import { htmlIdGenerator, EuiSpacer, EuiTitle, EuiText, EuiTextColor, EuiLink } from '@elastic/eui';
@@ -45,9 +45,7 @@ export const NodeDetail = memo(function ({ nodeID }: { nodeID: string }) {
           <PanelLoading />
         </StyledPanel>
       ) : (
-        <StyledPanel data-test-subj="resolver:panel:node-detail">
-          <NodeDetailView nodeID={nodeID} processEvent={processEvent} />
-        </StyledPanel>
+        <NodeDetailView nodeID={nodeID} processEvent={processEvent} />
       )}
     </>
   );
@@ -64,6 +62,7 @@ const NodeDetailView = memo(function ({
   processEvent: SafeResolverEvent;
   nodeID: string;
 }) {
+  const [panelRef, setPanelRef] = useState<HTMLElement | null>(null);
   const processName = eventModel.processNameSafeVersion(processEvent);
   const isProcessTerminated = useSelector((state: ResolverState) =>
     selectors.isProcessTerminated(state)(nodeID)
@@ -136,13 +135,14 @@ const NodeDetailView = memo(function ({
             <CopyablePanelField
               textToCopy={String(entry.description)}
               content={<GeneratedText>{String(entry.description)}</GeneratedText>}
+              panelRef={panelRef}
             />
           ),
         };
       });
 
     return processDescriptionListData;
-  }, [dateTime, processEvent]);
+  }, [dateTime, processEvent, panelRef]);
 
   const nodesLinkNavProps = useLinkProps({
     panelView: 'nodes',
@@ -180,7 +180,7 @@ const NodeDetailView = memo(function ({
 
   const titleID = useMemo(() => htmlIdGenerator('resolverTable')(), []);
   return (
-    <>
+    <StyledPanel data-test-subj="resolver:panel:node-detail" panelRef={setPanelRef}>
       <Breadcrumbs breadcrumbs={crumbs} />
       <EuiSpacer size="l" />
       <EuiTitle size="xs">
@@ -227,6 +227,6 @@ const NodeDetailView = memo(function ({
         compressed
         listItems={processInfoEntry}
       />
-    </>
+    </StyledPanel>
   );
 });

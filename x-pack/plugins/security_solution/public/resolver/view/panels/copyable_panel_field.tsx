@@ -9,7 +9,7 @@
 import { EuiToolTip, EuiPopover } from '@elastic/eui';
 import { i18n } from '@kbn/i18n';
 import styled from 'styled-components';
-import React, { memo, useState } from 'react';
+import React, { memo, useState, useEffect, useCallback } from 'react';
 import { WithCopyToClipboard } from '../../../common/lib/clipboard/with_copy_to_clipboard';
 import { useColors } from '../use_colors';
 import { StyledPanel } from '../styles';
@@ -40,11 +40,45 @@ const StyledCopyableField = styled.div<StyledCopyableField>`
  * When you then hover over these fields they will show a blue background and a tooltip with a copy button will appear
  */
 export const CopyablePanelField = memo(
-  ({ textToCopy, content }: { textToCopy: string; content: JSX.Element | string }) => {
+  ({
+    textToCopy,
+    content,
+    panelRef,
+  }: {
+    textToCopy: string;
+    content: JSX.Element | string;
+    panelRef: HTMLElement | null;
+  }) => {
     const { linkColor, copyableFieldBackground } = useColors();
     const [isOpen, setIsOpen] = useState(false);
+    const [openTimeoutID, updateOpenTimeoutID] = useState<number | undefined>();
 
-    const onMouseEnter = () => setIsOpen(true);
+    const onMouseEnter = useCallback(() => {
+      updateOpenTimeoutID(
+        Number(
+          setTimeout(() => {
+            setIsOpen(true);
+          }, 100)
+        )
+      );
+    }, [setIsOpen, updateOpenTimeoutID]);
+
+    const onMouseLeave = useCallback(() => {
+      if (openTimeoutID) clearTimeout(openTimeoutID);
+      setIsOpen(false);
+    }, [setIsOpen, openTimeoutID]);
+
+    useEffect(() => {
+      const scrollListener = () => {
+        if (openTimeoutID) clearTimeout(openTimeoutID);
+        setIsOpen(false);
+      };
+
+      if (panelRef) panelRef.addEventListener('scroll', scrollListener);
+      return () => {
+        if (panelRef) panelRef.removeEventListener('scroll', scrollListener);
+      };
+    }, [openTimeoutID, panelRef]);
 
     const ButtonContent = memo(() => (
       <StyledCopyableField
@@ -56,8 +90,6 @@ export const CopyablePanelField = memo(
         {content}
       </StyledCopyableField>
     ));
-
-    const onMouseLeave = () => setIsOpen(false);
 
     return (
       <div onMouseLeave={onMouseLeave}>

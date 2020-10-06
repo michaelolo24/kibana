@@ -8,7 +8,7 @@
 
 /* eslint-disable react/display-name */
 
-import React, { memo, useMemo, Fragment } from 'react';
+import React, { memo, useMemo, useState, Fragment } from 'react';
 import { i18n } from '@kbn/i18n';
 import { FormattedMessage } from '@kbn/i18n/react';
 import { EuiSpacer, EuiText, EuiDescriptionList, EuiTextColor, EuiTitle } from '@elastic/eui';
@@ -96,12 +96,13 @@ const EventDetailContents = memo(function ({
   eventType: string;
   processEvent: SafeResolverEvent | null;
 }) {
+  const [panelRef, setPanelRef] = useState<HTMLElement | null>(null);
   const timestamp = eventModel.timestampSafeVersion(event);
   const formattedDate = useFormattedDate(timestamp) || noTimestampRetrievedText;
   const nodeName = processEvent ? eventModel.processNameSafeVersion(processEvent) : null;
 
   return (
-    <StyledPanel data-test-subj="resolver:panel:event-detail">
+    <StyledPanel data-test-subj="resolver:panel:event-detail" panelRef={setPanelRef}>
       <EventDetailBreadcrumbs
         nodeID={nodeID}
         nodeName={nodeName}
@@ -135,12 +136,18 @@ const EventDetailContents = memo(function ({
         </GeneratedText>
       </StyledDescriptiveName>
       <EuiSpacer size="l" />
-      <EventDetailFields event={event} />
+      <EventDetailFields event={event} panelRef={panelRef} />
     </StyledPanel>
   );
 });
 
-function EventDetailFields({ event }: { event: SafeResolverEvent }) {
+function EventDetailFields({
+  event,
+  panelRef,
+}: {
+  event: SafeResolverEvent;
+  panelRef: HTMLElement | null;
+}) {
   const sections = useMemo(() => {
     const returnValue: Array<{
       namespace: React.ReactNode;
@@ -161,6 +168,7 @@ function EventDetailFields({ event }: { event: SafeResolverEvent }) {
             <CopyablePanelField
               textToCopy={String(fieldValue)}
               content={<GeneratedText>{String(fieldValue)}</GeneratedText>}
+              panelRef={panelRef}
             />
           ),
         })),
@@ -168,7 +176,7 @@ function EventDetailFields({ event }: { event: SafeResolverEvent }) {
       returnValue.push(section);
     }
     return returnValue;
-  }, [event]);
+  }, [event, panelRef]);
   return (
     <>
       {sections.map(({ namespace, descriptions }, index) => {

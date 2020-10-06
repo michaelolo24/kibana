@@ -12,7 +12,7 @@ import { useDispatch } from 'react-redux';
 
 /* eslint-disable react/display-name */
 
-import React, { memo, useMemo, useCallback, useContext } from 'react';
+import React, { memo, useMemo, useCallback, useContext, useState } from 'react';
 import {
   EuiBasicTableColumn,
   EuiBadge,
@@ -55,6 +55,7 @@ interface ProcessTableView {
  * The "default" view for the panel: A list of all the processes currently in the graph.
  */
 export const NodeList = memo(() => {
+  const [panelRef, setPanelRef] = useState<HTMLElement | null>(null);
   const columns = useMemo<Array<EuiBasicTableColumn<ProcessTableView>>>(
     () => [
       {
@@ -82,11 +83,11 @@ export const NodeList = memo(() => {
         dataType: 'date',
         sortable: true,
         render(eventDate?: Date) {
-          return <NodeDetailTimestamp eventDate={eventDate} />;
+          return <NodeDetailTimestamp eventDate={eventDate} panelRef={panelRef} />;
         },
       },
     ],
-    []
+    [panelRef]
   );
 
   const processTableView: ProcessTableView[] = useSelector(
@@ -126,7 +127,7 @@ export const NodeList = memo(() => {
   const showWarning = children === true || ancestors === true;
   const rowProps = useMemo(() => ({ 'data-test-subj': 'resolver:node-list:item' }), []);
   return (
-    <StyledPanel>
+    <StyledPanel panelRef={setPanelRef}>
       <Breadcrumbs breadcrumbs={crumbs} />
       {showWarning && <LimitWarning numberDisplayed={numberOfProcesses} />}
       <EuiSpacer size="l" />
@@ -212,12 +213,14 @@ function NodeDetailLink({
   );
 }
 
-const NodeDetailTimestamp = memo(({ eventDate }: { eventDate: Date | undefined }) => {
-  const formattedDate = useFormattedDate(eventDate);
+const NodeDetailTimestamp = memo(
+  ({ eventDate, panelRef }: { eventDate: Date | undefined; panelRef: HTMLElement | null }) => {
+    const formattedDate = useFormattedDate(eventDate);
 
-  return formattedDate ? (
-    <CopyablePanelField textToCopy={formattedDate} content={formattedDate} />
-  ) : (
-    getEmptyTagValue()
-  );
-});
+    return formattedDate ? (
+      <CopyablePanelField textToCopy={formattedDate} content={formattedDate} panelRef={panelRef} />
+    ) : (
+      getEmptyTagValue()
+    );
+  }
+);
