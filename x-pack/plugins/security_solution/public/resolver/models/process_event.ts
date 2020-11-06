@@ -4,6 +4,8 @@
  * you may not use this file except in compliance with the Elastic License.
  */
 
+import { ResolverGraphNode } from './../../../common/endpoint/types/index';
+
 import { firstNonNullValue } from '../../../common/endpoint/models/ecs_safety_helpers';
 
 import * as eventModel from '../../../common/endpoint/models/event';
@@ -145,6 +147,7 @@ export function argsForProcess(passedEvent: ResolverEvent): string | undefined {
 
 /**
  * used to sort events
+ * @deprecated - use orderNodesByProperty
  */
 export function orderByTime(first: SafeResolverEvent, second: SafeResolverEvent): number {
   const firstDatetime: number | null = datetime(first);
@@ -161,5 +164,32 @@ export function orderByTime(first: SafeResolverEvent, second: SafeResolverEvent)
   } else {
     // sort in ascending order.
     return firstDatetime - secondDatetime;
+  }
+}
+
+/**
+ * TODO: make sure this is stable
+ */
+export function orderGraphNodesByProperty(
+  first: ResolverGraphNode['data'],
+  second: ResolverGraphNode['data'],
+  property: string,
+  modifier?: Function
+): number {
+  const modFirst: string | number | null = modifier ? modifier(first?.[property]) : first;
+  const modSecond: string | number | null = modifier ? modifier(second?.[property]) : second;
+
+  if (modFirst === modSecond) {
+    // break ties using an arbitrary (stable) comparison of `eventId` (which should be unique)
+    return String(modFirst).localeCompare(String(modSecond));
+  } else if (typeof modFirst === 'string' || typeof modSecond === 'string') {
+    // TODO: Fix typing for this so you don't need to cast to string
+    return String(modFirst).localeCompare(String(modSecond));
+  } else if (modFirst === null || modSecond === null) {
+    // sort `null`'s as higher than numbers
+    return (modFirst === null ? 1 : 0) - (modSecond === null ? 1 : 0);
+  } else {
+    // sort in ascending order.
+    return modFirst - modSecond;
   }
 }

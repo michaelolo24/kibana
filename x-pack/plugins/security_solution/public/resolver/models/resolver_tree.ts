@@ -22,7 +22,8 @@ import * as eventModel from '../../../common/endpoint/models/event';
  * the entityID and stats for a process. Used by `relatedEventsStats`.
  */
 function lifecycleNodes(tree: ResolverTree): ResolverLifecycleNode[] {
-  return [tree, ...tree.children.childNodes, ...tree.ancestry.ancestors];
+  return [tree];
+  // return [tree, ...tree.children.childNodes, ...tree.ancestry.ancestors];
 }
 
 /**
@@ -30,13 +31,14 @@ function lifecycleNodes(tree: ResolverTree): ResolverLifecycleNode[] {
  */
 export function lifecycleEvents(tree: ResolverTree) {
   const events: SafeResolverEvent[] = [...tree.lifecycle];
-  for (const { lifecycle } of tree.children.childNodes) {
-    events.push(...lifecycle);
-  }
-  for (const { lifecycle } of tree.ancestry.ancestors) {
-    events.push(...lifecycle);
-  }
-  return events;
+  return [];
+  // for (const { lifecycle } of tree.children.childNodes) {
+  //   events.push(...lifecycle);
+  // }
+  // for (const { lifecycle } of tree.ancestry.ancestors) {
+  //   events.push(...lifecycle);
+  // }
+  // return events;
 }
 
 /**
@@ -44,12 +46,13 @@ export function lifecycleEvents(tree: ResolverTree) {
  */
 export function relatedEventsStats(tree: ResolverTree): Map<string, ResolverNodeStats> {
   const nodeStats: Map<string, ResolverNodeStats> = new Map();
-  for (const node of lifecycleNodes(tree)) {
-    if (node.stats) {
-      nodeStats.set(node.entityID, node.stats);
-    }
-  }
   return nodeStats;
+  // for (const node of lifecycleNodes(tree)) {
+  //   if (node.stats) {
+  //     nodeStats.set(node.entityID, node.stats);
+  //   }
+  // }
+  // return nodeStats;
 }
 
 /**
@@ -121,12 +124,14 @@ export function mock({
  * `true` if there are more children to fetch.
  */
 export function hasMoreChildren(resolverTree: ResolverTree): boolean {
-  return resolverTree.children.nextChild !== null;
+  return false;
+  // return resolverTree.children.nextChild !== null;
 }
 
 /**
  * `true` if there are more ancestors to fetch.
  */
 export function hasMoreAncestors(resolverTree: ResolverTree): boolean {
-  return resolverTree.ancestry.nextAncestor !== null;
+  return false;
+  // return resolverTree.ancestry.nextAncestor !== null;
 }

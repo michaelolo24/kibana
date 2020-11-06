@@ -9,6 +9,7 @@ import { createSelector, defaultMemoize } from 'reselect';
 import { panelViewAndParameters as panelViewAndParametersFromLocationSearchAndResolverComponentInstanceID } from '../panel_view_and_parameters';
 import {
   DataState,
+  GraphDataState,
   Vector2,
   IndexedEntity,
   IndexedEdgeLineSegment,
@@ -20,6 +21,7 @@ import {
 } from '../../types';
 import { isGraphableProcess, isTerminatedProcess } from '../../models/process_event';
 import * as indexedProcessTreeModel from '../../models/indexed_process_tree';
+import * as indexedGraphModel from '../../models/indexed_graph';
 import * as eventModel from '../../../../common/endpoint/models/event';
 import * as nodeEventsInCategoryModel from './node_events_in_category_model';
 import {
@@ -27,21 +29,30 @@ import {
   ResolverNodeStats,
   ResolverRelatedEvents,
   SafeResolverEvent,
+  ResolverGraphData,
+  ResolverGraphNode,
 } from '../../../../common/endpoint/types';
 import * as resolverTreeModel from '../../models/resolver_tree';
 import * as treeFetcherParametersModel from '../../models/tree_fetcher_parameters';
-import * as isometricTaxiLayoutModel from '../../models/indexed_process_tree/isometric_taxi_layout';
+// import * as isometricTaxiLayoutModel from '../../models/indexed_process_tree/isometric_taxi_layout';
+import * as isometricTaxiLayoutModel from '../../models/indexed_graph/isometric_taxi_layout';
 import * as vector2 from '../../models/vector2';
 
 /**
  * If there is currently a request.
+ * @deprecated use isGraphLoading
  */
 export function isTreeLoading(state: DataState): boolean {
   return state.tree?.pendingRequestParameters !== undefined;
 }
 
+export function isGraphLoading(state: GraphDataState): boolean {
+  return state.graph?.pendingRequestParameters !== undefined;
+}
+
 /**
  * If a request was made and it threw an error or returned a failure response code.
+ * @deprecated - use hadErrorLoadingGraph
  */
 export function hadErrorLoadingTree(state: DataState): boolean {
   if (state.tree?.lastResponse) {
@@ -51,13 +62,24 @@ export function hadErrorLoadingTree(state: DataState): boolean {
 }
 
 /**
+ * If a request was made and it threw an error or returned a failure response code.
+ */
+export function hadErrorLoadingGraph(state: GraphDataState): boolean {
+  if (state.graph?.lastResponse) {
+    return !state.graph?.lastResponse.successful;
+  }
+  return false;
+}
+
+/**
  * A string for uniquely identifying the instance of resolver within the app.
  */
-export function resolverComponentInstanceID(state: DataState): string {
+export function resolverComponentInstanceID(state: GraphDataState): string {
   return state.resolverComponentInstanceID ? state.resolverComponentInstanceID : '';
 }
 
 /**
+ * @deprecated use resolverGraphResponse
  * The last ResolverTree we received, if any. It may be stale (it might not be for the same databaseDocumentID that
  * we're currently interested in.
  */
@@ -66,32 +88,44 @@ const resolverTreeResponse = (state: DataState): ResolverTree | undefined => {
 };
 
 /**
+ * The last ResolverTree we received, if any. It may be stale (it might not be for the same databaseDocumentID that
+ * we're currently interested in.
+ */
+const resolverGraphResponse = (state: GraphDataState): ResolverGraphData | undefined => {
+  return state.graph?.lastResponse?.successful ? state.graph?.lastResponse.result : undefined;
+};
+
+/**
  * the node ID of the node representing the databaseDocumentID.
  * NB: this could be stale if the last response is stale
+ * @deprecated - use graphOriginID
  */
-export const originID: (state: DataState) => string | undefined = createSelector(
-  resolverTreeResponse,
+export const originID: (state: GraphDataState) => string | undefined = createSelector(
+  resolverGraphResponse,
   function (resolverTree?) {
     if (resolverTree) {
-      // This holds the entityID (aka nodeID) of the node related to the last fetched `_id`
-      return resolverTree.entityID;
+      // This holds the originId of the node related to the last fetched `_id`
+      return resolverTree.originId;
     }
     return undefined;
   }
 );
 
+// TODO: Should resolver visually show these terminations. If so, how can it be configured by the consuming security solution application?
 /**
  * Process events that will be displayed as terminated.
+ * TODO: We shoudl allow injectable or pluggable 'dataParsers' that determine what node is displayed
  */
 export const terminatedProcesses = createSelector(resolverTreeResponse, function (
   tree?: ResolverTree
 ) {
-  if (!tree) {
+  if (tree || !tree) {
+    // TODO: Remove this when configured properly
     return new Set();
   }
   return new Set(
     resolverTreeModel
-      .lifecycleEvents(tree)
+      .lifecycleEvents(tree) // TODO: if we keep this, it should get the data from tree.graph[index].data
       .filter(isTerminatedProcess)
       .map((terminatedEvent) => {
         return eventModel.entityIDSafeVersion(terminatedEvent);
@@ -101,6 +135,7 @@ export const terminatedProcesses = createSelector(resolverTreeResponse, function
 
 /**
  * A function that given an entity id returns a boolean indicating if the id is in the set of terminated processes.
+ * TODO: Discuss if we want to keep this in Resolver or let Security Solution provide this logic
  */
 export const isProcessTerminated = createSelector(terminatedProcesses, function (
   /* eslint-disable no-shadow */
@@ -112,36 +147,65 @@ export const isProcessTerminated = createSelector(terminatedProcesses, function 
   };
 });
 
+// /**
+//  * Process events that will be graphed.
+//  */
+// export const graphableProcesses = createSelector(resolverTreeResponse, function (tree?) {
+//   // Keep track of the last process event (in array order) for each entity ID
+//   const events: Map<string, SafeResolverEvent> = new Map();
+//   if (tree) {
+//     for (const event of resolverTreeModel.lifecycleEvents(tree)) {
+//       if (isGraphableProcess(event)) {
+//         const entityID = eventModel.entityIDSafeVersion(event);
+//         if (entityID !== undefined) {
+//           events.set(entityID, event);
+//         }
+//       }
+//     }
+//     return [...events.values()];
+//   } else {
+//     return [];
+//   }
+// });
+
 /**
  * Process events that will be graphed.
  */
-export const graphableProcesses = createSelector(resolverTreeResponse, function (tree?) {
+export const graphableNodes = createSelector(resolverGraphResponse, function (graphResponse?) {
   // Keep track of the last process event (in array order) for each entity ID
-  const events: Map<string, SafeResolverEvent> = new Map();
-  if (tree) {
-    for (const event of resolverTreeModel.lifecycleEvents(tree)) {
-      if (isGraphableProcess(event)) {
-        const entityID = eventModel.entityIDSafeVersion(event);
-        if (entityID !== undefined) {
-          events.set(entityID, event);
-        }
+  const nodes: Map<string, ResolverGraphNode> = new Map();
+  if (graphResponse) {
+    for (const node of graphResponse.graph) {
+      const nodeId = eventModel.nodeID(node);
+      if (nodeId !== undefined) {
+        nodes.set(nodeId, node);
       }
     }
-    return [...events.values()];
+    return [...nodes.values()];
   } else {
     return [];
   }
 });
 
-/**
- * The 'indexed process tree' contains the tree data, indexed in helpful ways. Used for O(1) access to stuff during graph layout.
- */
-export const tree = createSelector(graphableProcesses, function indexedTree(
+// /**
+//  * The 'indexed process tree' contains the tree data, indexed in helpful ways. Used for O(1) access to stuff during graph layout.
+//  * @deprecated use graph now
+//  */
+// export const tree = createSelector(graphableProcesses, function indexedTree(
+//   /* eslint-disable no-shadow */
+//   graphableProcesses
+//   /* eslint-enable no-shadow */
+// ) {
+//   return indexedProcessTreeModel.factory(graphableProcesses);
+// });
+
+export const graph = createSelector(graphableNodes, originID, function indexedGraph(
   /* eslint-disable no-shadow */
-  graphableProcesses
+  graphableNodes,
   /* eslint-enable no-shadow */
+  originNodeId
 ) {
-  return indexedProcessTreeModel.factory(graphableProcesses);
+  return indexedGraphModel.factory(graphableNodes, originNodeId);
 });
 
 /**
@@ -348,24 +412,24 @@ export function treeParametersToFetch(state: DataState): TreeFetcherParameters |
 }
 
 export const layout: (state: DataState) => IsometricTaxiLayout = createSelector(
-  tree,
+  graph,
   originID,
   function processNodePositionsAndEdgeLineSegments(
     /* eslint-disable no-shadow */
-    indexedProcessTree,
+    indexedProcessGraph,
     originID
     /* eslint-enable no-shadow */
   ) {
     // use the isometric taxi layout as a base
-    const taxiLayout = isometricTaxiLayoutModel.isometricTaxiLayoutFactory(indexedProcessTree);
-
+    const taxiLayout = isometricTaxiLayoutModel.isometricTaxiLayoutFactory(indexedProcessGraph);
+    console.log("TAXI LAYOUT: ", taxiLayout); // eslint-disable-line
     if (!originID) {
       // no data has loaded.
       return taxiLayout;
     }
 
     // find the origin node
-    const originNode = indexedProcessTreeModel.processEvent(indexedProcessTree, originID);
+    const originNode = indexedProcessTreeModel.processEvent(indexedProcessGraph, originID);
 
     if (originNode === null) {
       // If a tree is returned that has no process events for the origin, this can happen.
@@ -373,7 +437,7 @@ export const layout: (state: DataState) => IsometricTaxiLayout = createSelector(
     }
 
     // Find the position of the origin, we'll center the map on it intrinsically
-    const originPosition = isometricTaxiLayoutModel.processPosition(taxiLayout, originNode);
+    const originPosition = isometricTaxiLayoutModel.nodePosition(taxiLayout, originNode);
     // adjust the position of everything so that the origin node is at `(0, 0)`
 
     if (originPosition === undefined) {
@@ -395,7 +459,7 @@ export const layout: (state: DataState) => IsometricTaxiLayout = createSelector(
 export const processEventForID: (
   state: DataState
 ) => (nodeID: string) => SafeResolverEvent | null = createSelector(
-  tree,
+  graph,
   (indexedProcessTree) => (nodeID: string) => {
     return indexedProcessTreeModel.processEvent(indexedProcessTree, nodeID);
   }
@@ -421,7 +485,7 @@ export const ariaLevel: (state: DataState) => (nodeID: string) => number | null 
 export const ariaFlowtoCandidate: (
   state: DataState
 ) => (nodeID: string) => string | null = createSelector(
-  tree,
+  graph,
   processEventForID,
   (indexedProcessTree, eventGetter) => {
     // A map of preceding sibling IDs to following sibling IDs or `null`, if there is no following sibling

@@ -237,6 +237,7 @@ export function entityId(event: ResolverEvent): string {
 
 /**
  * Minimum fields needed from the `SafeResolverEvent` type for the function below to operate correctly.
+ * @deprecated
  */
 type EntityIDFields = Partial<
   | {
@@ -250,6 +251,10 @@ type EntityIDFields = Partial<
       }>;
     }
 >;
+
+interface NodeIDFields {
+  nodeId: ECSField<string>;
+}
 
 /**
  * Extract the first non null value from either the `entity_id` or `unique_pid` depending on the document type. Returns
@@ -265,6 +270,16 @@ export function entityIDSafeVersion(event: EntityIDFields): string | undefined {
   } else {
     return firstNonNullValue(event.process?.entity_id);
   }
+}
+
+/**
+ * Extract the first non null value from either the `entity_id` or `unique_pid` depending on the document type. Returns
+ * undefined if the field doesn't exist in the document.
+ *
+ * @param event a document from ES
+ */
+export function nodeID(node: NodeIDFields): string | undefined {
+  return node?.nodeId ? String(firstNonNullValue(node.nodeId)) : undefined;
 }
 
 /**
@@ -298,7 +313,7 @@ type ParentEntityIDFields = Partial<
 /**
  * Extract the first non null value from either the `parent.entity_id` or `unique_ppid` depending on the document type. Returns
  * undefined if the field doesn't exist in the document.
- *
+ * @deprecated - use nodeConnections instead
  * @param event a document from ES
  */
 export function parentEntityIDSafeVersion(event: ParentEntityIDFields): string | undefined {
@@ -306,6 +321,25 @@ export function parentEntityIDSafeVersion(event: ParentEntityIDFields): string |
     return String(firstNonNullValue(event.endgame?.unique_ppid));
   }
   return firstNonNullValue(event.process?.parent?.entity_id);
+}
+
+interface NodeConnectionFields {
+  connections: Array<ECSField<string>>;
+}
+
+/**
+ * Extract the first non null value from either the `parent.entity_id` or `unique_ppid` depending on the document type. Returns
+ * undefined if the field doesn't exist in the document.
+ *
+ * @param event a document from ES
+ */
+export function nodeConnections(node: NodeConnectionFields): string | undefined {
+  return node.connections
+    ? node.connections
+        .filter((val) => typeof val === 'string')
+        .sort()
+        .join('-')
+    : undefined;
 }
 
 /**

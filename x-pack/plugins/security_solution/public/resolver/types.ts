@@ -12,11 +12,14 @@ import { BBox } from 'rbush';
 import { Provider } from 'react-redux';
 import { ResolverAction } from './store/actions';
 import {
+  GraphResponse,
   ResolverRelatedEvents,
   ResolverTree,
   ResolverEntityIndex,
   SafeResolverEvent,
   ResolverPaginatedEvents,
+  ResolverGraphData,
+  ResolverGraphNode,
 } from '../../common/endpoint/types';
 
 /**
@@ -242,6 +245,7 @@ export interface NodeEventsInCategoryState {
 
 /**
  * State for `data` reducer which handles receiving Resolver data from the back-end.
+ * @deprecated, older format
  */
 export interface DataState {
   /**
@@ -315,6 +319,79 @@ export interface DataState {
   readonly locationSearch?: string;
 }
 
+// TODO: Change TreeFetcherParameters to match graph pattern
+export interface GraphDataState {
+  /**
+   * @deprecated Use the API
+   */
+  readonly relatedEvents: Map<string, ResolverRelatedEvents>;
+
+  /**
+   * Used when the panelView is `nodeEventsInCategory`.
+   * Store the `nodeEventsInCategory` data for the current panel view. If the panel view or parameters change, the reducer may delete this.
+   * If new data is returned for the panel view, this may be updated.
+   */
+  readonly nodeEventsInCategory?: NodeEventsInCategoryState;
+
+  /**
+   * Used when the panelView is `eventDetail`.
+   *
+   */
+  readonly currentRelatedEvent: {
+    loading: boolean;
+    data: SafeResolverEvent | null;
+  };
+
+  readonly graph?: {
+    /**
+     * The parameters passed from the resolver properties
+     */
+    readonly currentParameters?: TreeFetcherParameters;
+
+    /**
+     * The id used for the pending request, if there is one.
+     */
+    readonly pendingRequestParameters?: TreeFetcherParameters;
+    /**
+     * The parameters and response from the last successful request.
+     */
+    readonly lastResponse?: {
+      /**
+       * The id used in the request.
+       */
+      readonly parameters: TreeFetcherParameters;
+    } & (
+      | {
+          /**
+           * If a response with a success code was received, this is `true`.
+           */
+          readonly successful: true;
+          /**
+           * The parsed ResolverGraph data from the response.
+           * TODO: Get this back from the backend instead of modifying in the fetcher
+           */
+          readonly result: ResolverGraphData;
+        }
+      | {
+          /**
+           * If the request threw an exception or the response had a failure code, this will be false.
+           */
+          readonly successful: false;
+        }
+    );
+  };
+
+  /**
+   * An ID that is used to differentiate this Resolver instance from others concurrently running on the same page.
+   * Used to prevent collisions in things like query parameters.
+   */
+  readonly resolverComponentInstanceID?: string;
+
+  /**
+   * The `search` part of the URL.
+   */
+  readonly locationSearch?: string;
+}
 /**
  * Represents an ordered pair. Used for x-y coordinates and the like.
  */
@@ -379,6 +456,7 @@ export interface ProcessEvent {
 
 /**
  * A representation of a process tree with indices for O(1) access to children and values by id.
+ * @deprecated - use IndexedGraph
  */
 export interface IndexedProcessTree {
   /**
@@ -389,6 +467,24 @@ export interface IndexedProcessTree {
    * Map of ID to process
    */
   idToProcess: Map<string, SafeResolverEvent>;
+}
+
+/**
+ * A representation of a process tree with indices for O(1) access to children and values by id.
+ */
+export interface IndexedGraph {
+  /**
+   * Map of ID to a process's ordered children
+   */
+  idToConnections: Map<string | undefined, ResolverGraphNode[]>;
+  /**
+   * Map of ID to process
+   */
+  idToNode: Map<string, ResolverGraphNode>;
+  /**
+   * The id of the origin or root node provided by the backend
+   */
+  rootId: string;
 }
 
 /**
@@ -580,6 +676,25 @@ export interface IsometricTaxiLayout {
 }
 
 /**
+ *
+ * The schema that defines which parameter to use as the id of the given node
+ * and which parameter to use to define the edge or relationship. Currently keyed off by parent
+ * as those are the existing relationships.
+ * TODO: We may want to change parent when we move towards a general purpose graph.
+ * @export
+ * @interface NodeIdSchema
+ */
+export interface NodeIdSchema {
+  id: string;
+  parent: string; // TODO: Maybe change this to connection. What happens if this is an array []?
+}
+
+export interface Timerange {
+  from: string;
+  to: string;
+}
+
+/**
  * An object with methods that can be used to access data from the Kibana server.
  * This is injected into Resolver.
  * This allows tests to provide a mock data access layer.
@@ -610,6 +725,16 @@ export interface DataAccessLayer {
    * Fetch a ResolverTree for a entityID
    */
   resolverTree: (entityID: string, signal: AbortSignal) => Promise<ResolverTree>;
+
+  /**
+   * Fetch a ResolverTree for a entityID
+   */
+  resolverGraph: (
+    entityID: string,
+    schema: NodeIdSchema,
+    timerange: Timerange,
+    indices: string[]
+  ) => Promise<GraphResponse[]>;
 
   /**
    * Get entities matching a document.

@@ -6,13 +6,15 @@
 
 import { KibanaReactContextValue } from '../../../../../../src/plugins/kibana_react/public';
 import { StartServices } from '../../types';
-import { DataAccessLayer } from '../types';
+import { DataAccessLayer, GraphableSchema, Timerange } from '../types';
 import {
+  GraphResponse,
   ResolverRelatedEvents,
   ResolverTree,
   ResolverEntityIndex,
   ResolverPaginatedEvents,
   SafeResolverEvent,
+  ResolverNode,
 } from '../../../common/endpoint/types';
 
 /**
@@ -73,11 +75,38 @@ export function dataAccessLayerFactory(
     },
 
     /**
+     * TODO: Remove when everything works
+     * @deprecated - use the new resolverGraph
      * Used to get descendant and ancestor process events for a node.
      */
     async resolverTree(entityID: string, signal: AbortSignal): Promise<ResolverTree> {
       return context.services.http.get(`/api/endpoint/resolver/${entityID}`, {
         signal,
+      });
+    },
+
+    /**
+     *
+     *
+     * @param {string} nodeId
+     * @param {*} schema
+     * @param {*} timerange
+     * @param {string[]} indices
+     * @returns {Promise<ResolverNode[]>}
+     */
+    async resolverGraph(
+      nodeId: string,
+      schema: GraphableSchema,
+      timerange: Timerange,
+      indices: string[]
+    ): Promise<GraphResponse[]> {
+      return context.services.http.post('/api/endpoint/resolver/tree', {
+        body: JSON.stringify({
+          timerange,
+          schema,
+          nodes: [nodeId],
+          indexPatterns: indices,
+        }),
       });
     },
 

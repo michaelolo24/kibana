@@ -196,6 +196,31 @@ export interface ResolverTree {
   stats: ResolverNodeStats;
 }
 
+export interface GraphResponse {
+  /**
+   * This is the data returned based on the NodeSchema provided and event stats
+   */
+  data: unknown;
+  stats: EventStats;
+}
+
+// TODO: Make a more generalized type:
+// NodeID will be whatever the value of the unique identifier is defined by the data Schema
+// Connections will define what we know this node is connected to. In the parent scenario this will contain the parents
+// In a more general graph scenario, this will be any outgoing connections. This will allow for directed connections while maintaining the graph strcuture
+// Data can be any data source given
+// Stats is any related data we may want to display (events, metadata, etc...)
+export interface ResolverGraphNode {
+  nodeId: string;
+  connections: string[];
+  data: unknown;
+  stats: EventStats;
+}
+
+export interface ResolverGraphData {
+  originId: string;
+  graph: ResolverGraphNode[];
+}
 /**
  * Safe version of `ResolverTree`.
  */

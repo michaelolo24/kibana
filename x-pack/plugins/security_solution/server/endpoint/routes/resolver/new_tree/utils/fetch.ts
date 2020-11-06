@@ -65,6 +65,10 @@ export class Fetcher {
       }
     }
 
+    // if (statsIDs.length === 0) {
+    //   return [];
+    // }
+
     const query = new StatsQuery({
       indexPatterns: options.indexPatterns,
       schema: options.schema,
