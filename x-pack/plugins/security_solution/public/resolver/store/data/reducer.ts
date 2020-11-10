@@ -5,13 +5,13 @@
  */
 
 import { Reducer } from 'redux';
-import { DataState } from '../../types';
+import { GraphDataState } from '../../types';
 import { ResolverAction } from '../actions';
 import * as treeFetcherParameters from '../../models/tree_fetcher_parameters';
 import * as selectors from './selectors';
 import * as nodeEventsInCategoryModel from './node_events_in_category_model';
 
-const initialState: DataState = {
+const initialState: GraphDataState = {
   currentRelatedEvent: {
     loading: false,
     data: null,
@@ -20,12 +20,15 @@ const initialState: DataState = {
   resolverComponentInstanceID: undefined,
 };
 /* eslint-disable complexity */
-export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialState, action) => {
+export const dataReducer: Reducer<GraphDataState, ResolverAction> = (
+  state = initialState,
+  action
+) => {
   if (action.type === 'appReceivedNewExternalProperties') {
-    const nextState: DataState = {
+    const nextState: GraphDataState = {
       ...state,
-      tree: {
-        ...state.tree,
+      graph: {
+        ...state.graph,
         currentParameters: {
           databaseDocumentID: action.payload.databaseDocumentID,
           indices: action.payload.indices,
@@ -49,10 +52,10 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
     };
   } else if (action.type === 'appRequestedResolverData') {
     // keep track of what we're requesting, this way we know when to request and when not to.
-    const nextState: DataState = {
+    const nextState: GraphDataState = {
       ...state,
-      tree: {
-        ...state.tree,
+      graph: {
+        ...state.graph,
         pendingRequestParameters: {
           databaseDocumentID: action.payload.databaseDocumentID,
           indices: action.payload.indices,
@@ -61,12 +64,12 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
     };
     return nextState;
   } else if (action.type === 'appAbortedResolverDataRequest') {
-    if (treeFetcherParameters.equal(action.payload, state.tree?.pendingRequestParameters)) {
+    if (treeFetcherParameters.equal(action.payload, state.graph?.pendingRequestParameters)) {
       // the request we were awaiting was aborted
-      const nextState: DataState = {
+      const nextState: GraphDataState = {
         ...state,
-        tree: {
-          ...state.tree,
+        graph: {
+          ...state.graph,
           pendingRequestParameters: undefined,
         },
       };
@@ -76,11 +79,11 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
     }
   } else if (action.type === 'serverReturnedResolverData') {
     /** Only handle this if we are expecting a response */
-    const nextState: DataState = {
+    const nextState: GraphDataState = {
       ...state,
 
-      tree: {
-        ...state.tree,
+      graph: {
+        ...state.graph,
         /**
          * Store the last received data, as well as the databaseDocumentID it relates to.
          */
@@ -98,14 +101,14 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
     return nextState;
   } else if (action.type === 'serverFailedToReturnResolverData') {
     /** Only handle this if we are expecting a response */
-    if (state.tree?.pendingRequestParameters !== undefined) {
-      const nextState: DataState = {
+    if (state.graph?.pendingRequestParameters !== undefined) {
+      const nextState: GraphDataState = {
         ...state,
-        tree: {
-          ...state.tree,
+        graph: {
+          ...state.graph,
           pendingRequestParameters: undefined,
           lastResponse: {
-            parameters: state.tree.pendingRequestParameters,
+            parameters: state.graph.pendingRequestParameters,
             successful: false,
           },
         },
@@ -115,7 +118,7 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
       return state;
     }
   } else if (action.type === 'serverReturnedRelatedEventData') {
-    const nextState: DataState = {
+    const nextState: GraphDataState = {
       ...state,
       relatedEvents: new Map([...state.relatedEvents, [action.payload.entityID, action.payload]]),
     };
@@ -136,7 +139,7 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
         );
         // The 'updatedWith' method will fail if the old and new data don't represent events from the same node and event category
         if (updated) {
-          const next: DataState = {
+          const next: GraphDataState = {
             ...state,
             nodeEventsInCategory: updated,
           };
@@ -147,7 +150,7 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
         }
       } else {
         // There is no existing data, use the new data.
-        const next: DataState = {
+        const next: GraphDataState = {
           ...state,
           nodeEventsInCategory: action.payload,
         };
@@ -159,7 +162,7 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
     }
   } else if (action.type === 'userRequestedAdditionalRelatedEvents') {
     if (state.nodeEventsInCategory) {
-      const nextState: DataState = {
+      const nextState: GraphDataState = {
         ...state,
         nodeEventsInCategory: {
           ...state.nodeEventsInCategory,
@@ -172,7 +175,7 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
     }
   } else if (action.type === 'serverFailedToReturnNodeEventsInCategory') {
     if (state.nodeEventsInCategory) {
-      const nextState: DataState = {
+      const nextState: GraphDataState = {
         ...state,
         nodeEventsInCategory: {
           ...state.nodeEventsInCategory,
@@ -184,7 +187,7 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
       return state;
     }
   } else if (action.type === 'appRequestedCurrentRelatedEventData') {
-    const nextState: DataState = {
+    const nextState: GraphDataState = {
       ...state,
       currentRelatedEvent: {
         loading: true,
@@ -193,7 +196,7 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
     };
     return nextState;
   } else if (action.type === 'serverReturnedCurrentRelatedEventData') {
-    const nextState: DataState = {
+    const nextState: GraphDataState = {
       ...state,
       currentRelatedEvent: {
         loading: false,
@@ -202,7 +205,7 @@ export const dataReducer: Reducer<DataState, ResolverAction> = (state = initialS
     };
     return nextState;
   } else if (action.type === 'serverFailedToReturnCurrentRelatedEventData') {
-    const nextState: DataState = {
+    const nextState: GraphDataState = {
       ...state,
       currentRelatedEvent: {
         loading: false,

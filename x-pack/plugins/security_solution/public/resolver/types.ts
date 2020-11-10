@@ -12,13 +12,17 @@ import { BBox } from 'rbush';
 import { Provider } from 'react-redux';
 import { ResolverAction } from './store/actions';
 import {
+  ResolverNode,
   ResolverRelatedEvents,
   ResolverTree,
   ResolverEntityIndex,
   SafeResolverEvent,
   ResolverPaginatedEvents,
+  ResolverGraph,
+  ResolverGraphNode,
 } from '../../common/endpoint/types';
 
+// TODO: Change GraphDataState back to DataState
 /**
  * Redux state for the Resolver feature. Properties on this interface are populated via multiple reducers using redux's `combineReducers`.
  */
@@ -31,7 +35,7 @@ export interface ResolverState {
   /**
    * Contains the state associated with event data (process events and possibly other event types).
    */
-  readonly data: DataState;
+  readonly data: GraphDataState;
 
   /**
    * Contains the state needed to maintain Resolver UI elements.
@@ -167,7 +171,7 @@ export interface IndexedEdgeLineSegment extends BBox {
  */
 export interface IndexedProcessNode extends BBox {
   type: 'processNode';
-  entity: SafeResolverEvent;
+  entity: ResolverGraphNode;
   position: Vector2;
 }
 
@@ -196,6 +200,19 @@ export interface VisibleEntites {
 }
 
 export interface TreeFetcherParameters {
+  /**
+   * The `_id` for an ES document. Used to select a process that we'll show the graph for.
+   */
+  databaseDocumentID: string;
+
+  /**
+   * The indices that the backend will use to search for the document ID.
+   */
+  indices: string[];
+}
+
+// TODO: Just renaming, but keeping old type around in transition
+export interface GraphFetcherParameters {
   /**
    * The `_id` for an ES document. Used to select a process that we'll show the graph for.
    */
@@ -242,6 +259,7 @@ export interface NodeEventsInCategoryState {
 
 /**
  * State for `data` reducer which handles receiving Resolver data from the back-end.
+ * @deprecated - TODO: Confirm we can remove/replace in favor of GraphDataState
  */
 export interface DataState {
   /**
@@ -315,6 +333,79 @@ export interface DataState {
   readonly locationSearch?: string;
 }
 
+// TODO: Change TreeFetcherParameters to match graph pattern
+export interface GraphDataState {
+  /**
+   * @deprecated Use the API
+   */
+  readonly relatedEvents: Map<string, ResolverRelatedEvents>;
+
+  /**
+   * Used when the panelView is `nodeEventsInCategory`.
+   * Store the `nodeEventsInCategory` data for the current panel view. If the panel view or parameters change, the reducer may delete this.
+   * If new data is returned for the panel view, this may be updated.
+   */
+  readonly nodeEventsInCategory?: NodeEventsInCategoryState;
+
+  /**
+   * Used when the panelView is `eventDetail`.
+   *
+   */
+  readonly currentRelatedEvent: {
+    loading: boolean;
+    data: ResolverGraphNode | null;
+  };
+
+  readonly graph?: {
+    /**
+     * The parameters passed from the resolver properties
+     */
+    readonly currentParameters?: GraphFetcherParameters;
+
+    /**
+     * The id used for the pending request, if there is one.
+     */
+    readonly pendingRequestParameters?: GraphFetcherParameters;
+    /**
+     * The parameters and response from the last successful request.
+     */
+    readonly lastResponse?: {
+      /**
+       * The id used in the request.
+       */
+      readonly parameters: GraphFetcherParameters;
+    } & (
+      | {
+          /**
+           * If a response with a success code was received, this is `true`.
+           */
+          readonly successful: true;
+          /**
+           * The parsed ResolverGraph data from the response.
+           * TODO: Get this back from the backend instead of modifying in the fetcher
+           */
+          readonly result: ResolverGraph;
+        }
+      | {
+          /**
+           * If the request threw an exception or the response had a failure code, this will be false.
+           */
+          readonly successful: false;
+        }
+    );
+  };
+
+  /**
+   * An ID that is used to differentiate this Resolver instance from others concurrently running on the same page.
+   * Used to prevent collisions in things like query parameters.
+   */
+  readonly resolverComponentInstanceID?: string;
+
+  /**
+   * The `search` part of the URL.
+   */
+  readonly locationSearch?: string;
+}
 /**
  * Represents an ordered pair. Used for x-y coordinates and the like.
  */
@@ -379,6 +470,7 @@ export interface ProcessEvent {
 
 /**
  * A representation of a process tree with indices for O(1) access to children and values by id.
+ * @deprecated - use IndexedGraph
  */
 export interface IndexedProcessTree {
   /**
@@ -392,13 +484,31 @@ export interface IndexedProcessTree {
 }
 
 /**
+ * A representation of a process tree with indices for O(1) access to children and values by id.
+ */
+export interface IndexedGraph {
+  /**
+   * Map of ID to a process's ordered children
+   */
+  idToNeighbors: Map<string | undefined, ResolverGraphNode[]>;
+  /**
+   * Map of ID to process
+   */
+  idToNode: Map<string, ResolverGraphNode>;
+  /**
+   * The id of the origin or root node provided by the backend
+   */
+  rootId: string;
+}
+
+/**
  * A map of `ProcessEvents` (representing process nodes) to the 'width' of their subtrees as calculated by `widthsOfProcessSubtrees`
  */
-export type ProcessWidths = Map<SafeResolverEvent, number>;
+export type ProcessWidths = Map<ResolverGraphNode, number>;
 /**
  * Map of ProcessEvents (representing process nodes) to their positions. Calculated by `processPositions`
  */
-export type ProcessPositions = Map<SafeResolverEvent, Vector2>;
+export type ProcessPositions = Map<ResolverGraphNode, Vector2>;
 
 export type DurationTypes =
   | 'millisecond'
@@ -452,11 +562,11 @@ export interface EdgeLineSegment {
  * Used to provide pre-calculated info from `widthsOfProcessSubtrees`. These 'width' values are used in the layout of the graph.
  */
 export type ProcessWithWidthMetadata = {
-  process: SafeResolverEvent;
+  node: ResolverGraphNode;
   width: number;
 } & (
   | {
-      parent: SafeResolverEvent;
+      parent: ResolverGraphNode;
       parentWidth: number;
       isOnlyChild: boolean;
       firstChildWidth: number;
@@ -566,7 +676,7 @@ export interface IsometricTaxiLayout {
   /**
    * A map of events to position. Each event represents its own node.
    */
-  processNodePositions: Map<SafeResolverEvent, Vector2>;
+  processNodePositions: Map<ResolverGraphNode, Vector2>;
 
   /**
    * A map of edge-line segments, which graphically connect nodes.
@@ -576,7 +686,26 @@ export interface IsometricTaxiLayout {
   /**
    * defines the aria levels for nodes.
    */
-  ariaLevels: Map<SafeResolverEvent, number>;
+  ariaLevels: Map<ResolverGraphNode, number>;
+}
+
+/**
+ *
+ * The schema that defines which parameter to use as the id of the given node
+ * and which parameter to use to define the edge or relationship. Currently keyed off by parent
+ * as those are the existing relationships.
+ * TODO: We may want to change parent when we move towards a general purpose graph.
+ * @export
+ * @interface GraphRequestIdSchema
+ */
+export interface GraphRequestIdSchema {
+  id: string;
+  parent: string; // TODO: Maybe change this to connection. What happens if this is an array []?
+}
+
+export interface GraphRequestTimerange {
+  from: string;
+  to: string;
 }
 
 /**
@@ -610,6 +739,16 @@ export interface DataAccessLayer {
    * Fetch a ResolverTree for a entityID
    */
   resolverTree: (entityID: string, signal: AbortSignal) => Promise<ResolverTree>;
+
+  /**
+   * Fetch a ResolverTree for a entityID
+   */
+  resolverGraph: (
+    entityID: string,
+    schema: GraphRequestIdSchema,
+    timerange: GraphRequestTimerange,
+    indices: string[]
+  ) => Promise<ResolverNode[]>;
 
   /**
    * Get entities matching a document.

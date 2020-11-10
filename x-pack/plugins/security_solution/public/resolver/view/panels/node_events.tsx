@@ -22,7 +22,7 @@ import { useLinkProps } from '../use_link_props';
 
 export function NodeEvents({ nodeID }: { nodeID: string }) {
   const processEvent = useSelector((state: ResolverState) =>
-    selectors.processEventForID(state)(nodeID)
+    selectors.graphNodeForId(state)(nodeID)
   );
   const relatedEventsStats = useSelector((state: ResolverState) =>
     selectors.relatedEventsStats(state)(nodeID)

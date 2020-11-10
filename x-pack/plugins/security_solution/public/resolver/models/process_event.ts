@@ -4,6 +4,7 @@
  * you may not use this file except in compliance with the Elastic License.
  */
 
+import { ResolverGraphNode } from './../../../common/endpoint/types/index';
 import { firstNonNullValue } from '../../../common/endpoint/models/ecs_safety_helpers';
 
 import * as eventModel from '../../../common/endpoint/models/event';
@@ -145,6 +146,7 @@ export function argsForProcess(passedEvent: ResolverEvent): string | undefined {
 
 /**
  * used to sort events
+ * @deprecated - use orderNodesByProperty
  */
 export function orderByTime(first: SafeResolverEvent, second: SafeResolverEvent): number {
   const firstDatetime: number | null = datetime(first);
@@ -161,5 +163,36 @@ export function orderByTime(first: SafeResolverEvent, second: SafeResolverEvent)
   } else {
     // sort in ascending order.
     return firstDatetime - secondDatetime;
+  }
+}
+
+/**
+ * This function allows the graph to be sorted based on a property within the data bucket.
+ * If the field needs to be modified before comparison, an optional modifier can be provided.
+ * TODO: make sure this is stable
+ */
+export function orderGraphNodesByProperty(
+  firstValue: ResolverGraphNode['data'],
+  secondValue: ResolverGraphNode['data'],
+  property: string,
+  modifier?: Function
+): number {
+  // TODO: You would probably need to do a _.get or similar here as it could be a highly nested property.
+  // If the sort field is set ahead of time, it could also be a toplevel attribute on the node
+  const modFirst: string | number | null = modifier
+    ? modifier(firstValue?.[property])
+    : firstValue?.[property];
+  const modSecond: string | number | null = modifier
+    ? modifier(secondValue?.[property])
+    : secondValue?.[property];
+
+  if (modFirst === modSecond || typeof modFirst === 'string' || typeof modSecond === 'string') {
+    return String(modFirst).localeCompare(String(modSecond));
+  } else if (modFirst === null || modSecond === null) {
+    // sort `null`'s as higher than numbers
+    return (modFirst === null ? 1 : 0) - (modSecond === null ? 1 : 0);
+  } else {
+    // sort in ascending order.
+    return modFirst - modSecond;
   }
 }

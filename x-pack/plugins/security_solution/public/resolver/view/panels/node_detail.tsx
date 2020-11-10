@@ -36,7 +36,7 @@ const StyledCubeForProcess = styled(CubeForProcess)`
 
 export const NodeDetail = memo(function ({ nodeID }: { nodeID: string }) {
   const processEvent = useSelector((state: ResolverState) =>
-    selectors.processEventForID(state)(nodeID)
+    selectors.graphNodeforId(state)(nodeID)
   );
   return (
     <>

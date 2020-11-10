@@ -31,7 +31,6 @@ export const resolverMiddlewareFactory: MiddlewareFactory = (dataAccessLayer: Da
     const currentRelatedEventFetcher = CurrentRelatedEventFetcher(dataAccessLayer, api);
     return async (action: ResolverAction) => {
       next(action);
-
       resolverTreeFetcher();
       relatedEventsFetcher();
       currentRelatedEventFetcher();

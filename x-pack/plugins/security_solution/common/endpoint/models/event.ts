@@ -3,9 +3,17 @@
  * or more contributor license agreements. Licensed under the Elastic License;
  * you may not use this file except in compliance with the Elastic License.
  */
-import { LegacyEndpointEvent, ResolverEvent, SafeResolverEvent, ECSField } from '../types';
+import {
+  LegacyEndpointEvent,
+  ResolverEvent,
+  ResolverGraphNode,
+  SafeResolverEvent,
+  ECSField,
+} from '../types';
 import { firstNonNullValue, hasValue, values } from './ecs_safety_helpers';
 
+// TODO: Should we move the process/event specific logic out. Checks should be done on the initial data external to resolver code
+// TODO: Can these checks be done against the `data` attribute? The panel will be external to resolver
 /**
  * Legacy events will define the `endgame` object. This is used to narrow a ResolverEvent.
  */
@@ -298,7 +306,7 @@ type ParentEntityIDFields = Partial<
 /**
  * Extract the first non null value from either the `parent.entity_id` or `unique_ppid` depending on the document type. Returns
  * undefined if the field doesn't exist in the document.
- *
+ * @deprecated - use idsForNodeNeighbors instead
  * @param event a document from ES
  */
 export function parentEntityIDSafeVersion(event: ParentEntityIDFields): string | undefined {
@@ -306,6 +314,25 @@ export function parentEntityIDSafeVersion(event: ParentEntityIDFields): string |
     return String(firstNonNullValue(event.endgame?.unique_ppid));
   }
   return firstNonNullValue(event.process?.parent?.entity_id);
+}
+
+/**
+ * Extract the first non null value from the nodeId depending on the datasource. Returns
+ * undefined if the field was never set.
+ *
+ * @param event a document from ES
+ */
+export function nodeID(node: ResolverGraphNode): string | undefined {
+  return node?.nodeId ? String(firstNonNullValue(node.nodeId)) : undefined;
+}
+
+/**
+ * Extract all of the neighbors for a given node.
+ *
+ * @param event a document from ES
+ */
+export function idsForNodeNeighbors(node: ResolverGraphNode): string[] | undefined {
+  return node?.neighbors ?? undefined;
 }
 
 /**

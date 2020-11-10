@@ -6,6 +6,7 @@
 
 import {
   ResolverRelatedEvents,
+  ResolverGraph,
   ResolverTree,
   SafeEndpointEvent,
   SafeResolverEvent,
@@ -18,7 +19,7 @@ interface ServerReturnedResolverData {
     /**
      * The result of fetching data
      */
-    result: ResolverTree;
+    result: ResolverGraph;
     /**
      * The database parameters that was used to fetch the resolver tree
      */
