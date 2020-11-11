@@ -298,7 +298,6 @@ type ParentEntityIDFields = Partial<
 /**
  * Extract the first non null value from either the `parent.entity_id` or `unique_ppid` depending on the document type. Returns
  * undefined if the field doesn't exist in the document.
- *
  * @param event a document from ES
  */
 export function parentEntityIDSafeVersion(event: ParentEntityIDFields): string | undefined {

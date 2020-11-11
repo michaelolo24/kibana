@@ -13,7 +13,7 @@ import { FormattedMessage } from '@kbn/i18n/react';
 import { useSelector } from 'react-redux';
 import { Breadcrumbs } from './breadcrumbs';
 import * as event from '../../../../common/endpoint/models/event';
-import { ResolverNodeStats } from '../../../../common/endpoint/types';
+import { EventStats } from '../../../../common/endpoint/types';
 import * as selectors from '../../store/selectors';
 import { ResolverState } from '../../types';
 import { StyledPanel } from '../styles';
@@ -22,12 +22,12 @@ import { useLinkProps } from '../use_link_props';
 
 export function NodeEvents({ nodeID }: { nodeID: string }) {
   const processEvent = useSelector((state: ResolverState) =>
-    selectors.processEventForID(state)(nodeID)
+    selectors.graphNodeForId(state)(nodeID)
   );
-  const relatedEventsStats = useSelector((state: ResolverState) =>
-    selectors.relatedEventsStats(state)(nodeID)
+  const relatedNodeStats = useSelector((state: ResolverState) =>
+    selectors.relatedNodeStats(state)(nodeID)
   );
-  if (processEvent === null || relatedEventsStats === undefined) {
+  if (processEvent === null || relatedNodeStats === undefined) {
     return (
       <StyledPanel>
         <PanelLoading />
@@ -39,10 +39,10 @@ export function NodeEvents({ nodeID }: { nodeID: string }) {
         <NodeEventsBreadcrumbs
           nodeName={event.processNameSafeVersion(processEvent)}
           nodeID={nodeID}
-          totalEventCount={relatedEventsStats.events.total}
+          totalEventCount={relatedNodeStats.total}
         />
         <EuiSpacer size="l" />
-        <EventCategoryLinks nodeID={nodeID} relatedStats={relatedEventsStats} />
+        <EventCategoryLinks nodeID={nodeID} relatedStats={relatedNodeStats} />
       </StyledPanel>
     );
   }
@@ -64,7 +64,7 @@ const EventCategoryLinks = memo(function ({
   relatedStats,
 }: {
   nodeID: string;
-  relatedStats: ResolverNodeStats;
+  relatedStats: EventStats;
 }) {
   interface EventCountsTableView {
     eventType: string;
@@ -72,7 +72,7 @@ const EventCategoryLinks = memo(function ({
   }
 
   const rows = useMemo(() => {
-    return Object.entries(relatedStats.events.byCategory).map(
+    return Object.entries(relatedStats.byCategory).map(
       ([eventType, count]): EventCountsTableView => {
         return {
           eventType,
@@ -80,7 +80,7 @@ const EventCategoryLinks = memo(function ({
         };
       }
     );
-  }, [relatedStats.events.byCategory]);
+  }, [relatedStats.byCategory]);
 
   const columns = useMemo<Array<EuiBasicTableColumn<EventCountsTableView>>>(
     () => [

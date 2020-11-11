@@ -19,7 +19,7 @@ import { useCamera } from './use_camera';
 import { SymbolDefinitions } from './symbol_definitions';
 import { useStateSyncingActions } from './use_state_syncing_actions';
 import { StyledMapContainer, GraphContainer } from './styles';
-import { entityIDSafeVersion } from '../../../common/endpoint/models/event';
+import { nodeID } from '../../../common/endpoint/models/event';
 import { SideEffectContext } from './side_effect_context';
 import { ResolverProps, ResolverState } from '../types';
 import { PanelRouter } from './panels';
@@ -54,7 +54,7 @@ export const ResolverWithoutProviders = React.memo(
     } = useSelector((state: ResolverState) =>
       selectors.visibleNodesAndEdgeLines(state)(timeAtRender)
     );
-    const terminatedProcesses = useSelector(selectors.terminatedProcesses);
+    const inactiveNodes = useSelector(selectors.inactiveNodes);
     const { projectionMatrix, ref: cameraRef, onMouseDown } = useCamera();
 
     const ref = useCallback(
@@ -71,8 +71,8 @@ export const ResolverWithoutProviders = React.memo(
       },
       [cameraRef, refToForward]
     );
-    const isLoading = useSelector(selectors.isTreeLoading);
-    const hasError = useSelector(selectors.hadErrorLoadingTree);
+    const isLoading = useSelector(selectors.isGraphLoading);
+    const hasError = useSelector(selectors.hadErrorLoadingGraph);
     const activeDescendantId = useSelector(selectors.ariaActiveDescendant);
     const colorMap = useColors();
 
@@ -113,15 +113,15 @@ export const ResolverWithoutProviders = React.memo(
                 />
               )
             )}
-            {[...processNodePositions].map(([processEvent, position]) => {
-              const processEntityId = entityIDSafeVersion(processEvent);
+            {[...processNodePositions].map(([processNode, position]) => {
+              const processEntityId = nodeID(processNode);
               return (
                 <ProcessEventDot
                   key={processEntityId}
                   position={position}
                   projectionMatrix={projectionMatrix}
-                  event={processEvent}
-                  isProcessTerminated={terminatedProcesses.has(processEntityId)}
+                  node={processNode}
+                  isProcessTerminated={inactiveNodes.has(processEntityId)}
                   timeAtRender={timeAtRender}
                 />
               );

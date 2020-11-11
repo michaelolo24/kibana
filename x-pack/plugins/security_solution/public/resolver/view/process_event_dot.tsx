@@ -12,9 +12,10 @@ import { FormattedMessage } from '@kbn/i18n/react';
 import { NodeSubMenu } from './styles';
 import { applyMatrix3 } from '../models/vector2';
 import { Vector2, Matrix3, ResolverState } from '../types';
-import { SafeResolverEvent } from '../../../common/endpoint/types';
+import { ResolverGraphNode, SafeResolverEvent } from '../../../common/endpoint/types';
 import { useResolverDispatch } from './use_resolver_dispatch';
 import * as eventModel from '../../../common/endpoint/models/event';
+import * as nodeModel from '../../../common/endpoint/models/node';
 import * as selectors from '../store/selectors';
 import { fontSize } from './font_size';
 import { useCubeAssets } from './use_cube_assets';
@@ -77,7 +78,7 @@ const UnstyledProcessEventDot = React.memo(
   ({
     className,
     position,
-    event,
+    node,
     projectionMatrix,
     isProcessTerminated,
     timeAtRender,
@@ -93,7 +94,7 @@ const UnstyledProcessEventDot = React.memo(
     /**
      * An event which contains details about the process node.
      */
-    event: SafeResolverEvent;
+    node: ResolverGraphNode;
     /**
      * projectionMatrix which can be used to convert `position` to screen coordinates.
      */
@@ -125,13 +126,13 @@ const UnstyledProcessEventDot = React.memo(
     const ariaActiveDescendant = useSelector(selectors.ariaActiveDescendant);
     const selectedNode = useSelector(selectors.selectedNode);
     const originID = useSelector(selectors.originID);
-    const nodeID: string | undefined = eventModel.entityIDSafeVersion(event);
+    const nodeID: string | undefined = nodeModel.nodeID(node);
     if (nodeID === undefined) {
       // NB: this component should be taking nodeID as a `string` instead of handling this logic here
       throw new Error('Tried to render a node with no ID');
     }
     const relatedEventStats = useSelector((state: ResolverState) =>
-      selectors.relatedEventsStats(state)(nodeID)
+      selectors.relatedNodeStats(state)(nodeID)
     );
 
     // define a standard way of giving HTML IDs to nodes based on their entity_id/nodeID.
@@ -267,7 +268,7 @@ const UnstyledProcessEventDot = React.memo(
     );
 
     const grandTotal: number | null = useSelector((state: ResolverState) =>
-      selectors.relatedEventTotalForProcess(state)(event)
+      selectors.relatedEventTotalForProcess(state)(node)
     );
 
     /* eslint-disable jsx-a11y/click-events-have-key-events */
@@ -405,13 +406,13 @@ const UnstyledProcessEventDot = React.memo(
                 maxWidth: `${isShowingEventActions ? 400 : 210 * xScale}px`,
               }}
               tabIndex={-1}
-              title={eventModel.processNameSafeVersion(event)}
+              title={eventModel.processNameSafeVersion(node)}
               data-test-subj="resolver:node:primary-button"
               data-test-resolver-node-id={nodeID}
             >
               <span className="euiButton__content">
                 <span className="euiButton__text" data-test-subj={'euiButton__text'}>
-                  {eventModel.processNameSafeVersion(event)}
+                  {eventModel.processNameSafeVersion(node)}
                 </span>
               </span>
             </EuiButton>
