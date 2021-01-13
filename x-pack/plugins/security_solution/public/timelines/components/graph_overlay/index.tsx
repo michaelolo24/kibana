@@ -8,8 +8,8 @@ import {
   EuiButtonEmpty,
   EuiFlexGroup,
   EuiFlexItem,
-  EuiHorizontalRule,
   EuiLoadingSpinner,
+  EuiPanel,
 } from '@elastic/eui';
 import React, { useCallback, useMemo } from 'react';
 import { useDispatch } from 'react-redux';
@@ -36,14 +36,35 @@ import * as i18n from './translations';
 import { useUiSetting$ } from '../../../common/lib/kibana';
 import { useSignalIndex } from '../../../detections/containers/detection_engine/alerts/use_signal_index';
 
-const OverlayContainer = styled.div`
-  ${({ $restrictWidth }: { $restrictWidth: boolean }) =>
-    `
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    width: ${$restrictWidth ? 'calc(100% - 36px)' : '100%'};
-    `}
+const OverlayContainer = styled.div<{ $restrictWidth: boolean }>`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: ${({ $restrictWidth }) => ($restrictWidth ? 'calc(100% - 36px)' : '100%')};
+`;
+
+/** TODO: MOO - Consolidate the below styles across all the tab files */
+const FullWidthFlexGroup = styled(EuiFlexGroup)`
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  overflow: hidden;
+`;
+
+const ScrollableFlexItem = styled(EuiFlexItem)`
+  overflow-x: hidden;
+  overflow-y: none;
+`;
+
+const VerticalRule = styled.div`
+  width: 2px;
+  height: 100%;
+  background: ${({ theme }) => theme.eui.euiColorLightShade};
+`;
+
+const StyledResolverPanel = styled(EuiPanel)`
+  height: 100%;
+  padding: 0;
 `;
 
 const StyledResolver = styled(Resolver)`
@@ -51,6 +72,7 @@ const StyledResolver = styled(Resolver)`
 `;
 
 interface OwnProps {
+  wasAlreadyFullScreen: boolean;
   isEventViewer: boolean;
   timelineId: string;
 }
@@ -73,7 +95,11 @@ NavigationComponent.displayName = 'NavigationComponent';
 
 const Navigation = React.memo(NavigationComponent);
 
-const GraphOverlayComponent: React.FC<OwnProps> = ({ isEventViewer, timelineId }) => {
+const GraphOverlayComponent: React.FC<OwnProps> = ({
+  wasAlreadyFullScreen,
+  isEventViewer,
+  timelineId,
+}) => {
   const dispatch = useDispatch();
   const { globalFullScreen, setGlobalFullScreen } = useGlobalFullScreen();
   const { timelineFullScreen, setTimelineFullScreen } = useTimelineFullScreen();
@@ -88,42 +114,42 @@ const GraphOverlayComponent: React.FC<OwnProps> = ({ isEventViewer, timelineId }
   }, [timelineId, setTimelineFullScreen, setGlobalFullScreen]);
 
   const onCloseOverlay = useCallback(() => {
-    closeFullScreen();
+    if (!wasAlreadyFullScreen) closeFullScreen();
     dispatch(updateTimelineGraphEventId({ id: timelineId, graphEventId: '' }));
-  }, [dispatch, timelineId, closeFullScreen]);
+  }, [wasAlreadyFullScreen, closeFullScreen, dispatch, timelineId]);
 
   const getTimeline = useMemo(() => timelineSelectors.getTimelineByIdSelector(), []);
   const graphEventId = useDeepEqualSelector(
     (state) => (getTimeline(state, timelineId) ?? timelineDefaults).graphEventId
   );
 
-  const getStartSelector = useMemo(() => startSelector(), []);
-  const getEndSelector = useMemo(() => endSelector(), []);
+  // eslint-disable-next-line react/display-name
+  const EventDetailsContent = React.memo(() =>
+    graphEventId != null ? <div>{'Replacement Panel Goes Here'}</div> : null
+  );
+
+  const getTimerangeStartSelector = useMemo(() => startSelector(), []);
+  const getTimerangeEndSelector = useMemo(() => endSelector(), []);
   const getIsLoadingSelector = useMemo(() => isLoadingSelector(), []);
-  const isActive = useMemo(() => timelineId === TimelineId.active, [timelineId]);
-  const shouldUpdate = useDeepEqualSelector((state) => {
-    if (isActive) {
-      return getIsLoadingSelector(state.inputs.timeline);
+  const isTimelineFlyoutActive = useMemo(() => timelineId === TimelineId.active, [timelineId]);
+
+  const timelineInputFilters = useDeepEqualSelector((state) => {
+    let shouldUpdate;
+    let from;
+    let to;
+    if (isTimelineFlyoutActive) {
+      shouldUpdate = getIsLoadingSelector(state.inputs.timeline);
+      from = getTimerangeStartSelector(state.inputs.timeline);
+      to = getTimerangeEndSelector(state.inputs.timeline);
     } else {
-      return getIsLoadingSelector(state.inputs.global);
+      shouldUpdate = getIsLoadingSelector(state.inputs.global);
+      from = getTimerangeStartSelector(state.inputs.global);
+      to = getTimerangeEndSelector(state.inputs.global);
     }
-  });
-  const from = useDeepEqualSelector((state) => {
-    if (isActive) {
-      return getStartSelector(state.inputs.timeline);
-    } else {
-      return getStartSelector(state.inputs.global);
-    }
-  });
-  const to = useDeepEqualSelector((state) => {
-    if (isActive) {
-      return getEndSelector(state.inputs.timeline);
-    } else {
-      return getEndSelector(state.inputs.global);
-    }
+    return { shouldUpdate, from, to };
   });
 
-  const fullScreen = useMemo(
+  const memoizedIsFullScreen = useMemo(
     () => isFullScreen({ globalFullScreen, timelineId, timelineFullScreen }),
     [globalFullScreen, timelineId, timelineFullScreen]
   );
@@ -141,28 +167,43 @@ const GraphOverlayComponent: React.FC<OwnProps> = ({ isEventViewer, timelineId }
   return (
     <OverlayContainer
       data-test-subj="overlayContainer"
-      $restrictWidth={isEventViewer && fullScreen}
+      $restrictWidth={isEventViewer && memoizedIsFullScreen}
     >
-      <EuiHorizontalRule margin="none" />
-      <EuiFlexGroup gutterSize="none" justifyContent="spaceBetween">
-        <EuiFlexItem grow={false}>
-          <Navigation onCloseOverlay={onCloseOverlay} />
-        </EuiFlexItem>
-      </EuiFlexGroup>
-      <EuiHorizontalRule margin="none" />
-      {graphEventId !== undefined && indices !== null ? (
-        <StyledResolver
-          databaseDocumentID={graphEventId}
-          resolverComponentInstanceID={timelineId}
-          indices={indices}
-          shouldUpdate={shouldUpdate}
-          filters={{ from, to }}
-        />
-      ) : (
-        <EuiFlexGroup alignItems="center" justifyContent="center" style={{ height: '100%' }}>
-          <EuiLoadingSpinner size="xl" />
+      {/* <EuiHorizontalRule margin="none" /> */}
+      {memoizedIsFullScreen && !isTimelineFlyoutActive && (
+        <EuiFlexGroup gutterSize="none" justifyContent="spaceBetween">
+          <EuiFlexItem grow={false}>
+            <Navigation onCloseOverlay={onCloseOverlay} />
+          </EuiFlexItem>
         </EuiFlexGroup>
       )}
+      <StyledResolverPanel>
+        <FullWidthFlexGroup>
+          <ScrollableFlexItem grow={3}>
+            {graphEventId !== undefined && indices !== null ? (
+              <StyledResolver
+                databaseDocumentID={graphEventId}
+                resolverComponentInstanceID={timelineId}
+                indices={indices}
+                shouldUpdate={timelineInputFilters.shouldUpdate}
+                filters={{ from: timelineInputFilters.from, to: timelineInputFilters.to }}
+              />
+            ) : (
+              <EuiFlexGroup alignItems="center" justifyContent="center" style={{ height: '100%' }}>
+                <EuiLoadingSpinner size="xl" />
+              </EuiFlexGroup>
+            )}
+          </ScrollableFlexItem>
+          {EventDetailsContent && (
+            <>
+              <VerticalRule />
+              <ScrollableFlexItem grow={1}>
+                <EventDetailsContent />
+              </ScrollableFlexItem>
+            </>
+          )}
+        </FullWidthFlexGroup>
+      </StyledResolverPanel>
     </OverlayContainer>
   );
 };

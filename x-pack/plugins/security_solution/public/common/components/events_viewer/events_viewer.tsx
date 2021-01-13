@@ -6,7 +6,7 @@
 
 import { EuiFlexGroup, EuiFlexItem, EuiPanel } from '@elastic/eui';
 import { isEmpty } from 'lodash/fp';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import styled from 'styled-components';
 import deepEqual from 'fast-deep-equal';
 
@@ -159,10 +159,10 @@ const EventsViewerComponent: React.FC<Props> = ({
   graphEventId,
 }) => {
   const { globalFullScreen } = useGlobalFullScreen();
+  const wasFullScreenBeforeAnalyzerOpened = useRef(globalFullScreen);
   const columnsHeader = isEmpty(columns) ? defaultHeaders : columns;
   const kibana = useKibana();
   const [isQueryLoading, setIsQueryLoading] = useState(false);
-
   const { getManageTimelineById, setIsTimelineLoading } = useManageTimeline();
 
   useEffect(() => {
@@ -279,6 +279,14 @@ const EventsViewerComponent: React.FC<Props> = ({
     setIsQueryLoading(loading);
   }, [loading]);
 
+  /* This effect keeps track of the full screen state prior to the always full screen analyzer being opened  */
+  /* Exists so that when analyzer is closed it will return to the prior state (full screen or not) for the timeline */
+  useEffect(() => {
+    if (!graphEventId) {
+      wasFullScreenBeforeAnalyzerOpened.current = globalFullScreen && id !== TimelineId.active;
+    }
+  }, [globalFullScreen, graphEventId, id]);
+
   return (
     <StyledEuiPanel
       data-test-subj="events-viewer-panel"
@@ -310,7 +318,13 @@ const EventsViewerComponent: React.FC<Props> = ({
                 refetch={refetch}
               />
 
-              {graphEventId && <GraphOverlay isEventViewer={true} timelineId={id} />}
+              {graphEventId && (
+                <GraphOverlay
+                  wasAlreadyFullScreen={wasFullScreenBeforeAnalyzerOpened.current}
+                  isEventViewer={true}
+                  timelineId={id}
+                />
+              )}
               <FullWidthFlexGroup $visible={!graphEventId} gutterSize="none">
                 <ScrollableFlexItem grow={1}>
                   <StatefulBody
