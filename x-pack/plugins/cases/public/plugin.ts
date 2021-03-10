@@ -7,9 +7,11 @@
 
 import { CoreStart, CoreSetup, Plugin, PluginInitializerContext } from 'src/core/public';
 import { TestComponent } from '.';
+import { CasesPage, CasesPageProps } from './pages/case';
 
 export interface CasesUiStart {
   casesComponent: () => JSX.Element;
+  casesPage: React.MemoExoticComponent<({ userPermissions }: CasesPageProps) => JSX.Element>;
 }
 
 export class CasesUiPlugin implements Plugin<void, CasesUiStart> {
@@ -19,6 +21,7 @@ export class CasesUiPlugin implements Plugin<void, CasesUiStart> {
 
   public setup(core: CoreSetup): void {
     this.casesUi.casesComponent = TestComponent;
+    this.casesUi.casesPage = CasesPage;
   }
 
   public start(core: CoreStart): CasesUiStart {

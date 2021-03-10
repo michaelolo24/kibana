@@ -8,7 +8,7 @@
 import React from 'react';
 
 import { WrapperPage } from '../../common/components/wrapper_page';
-import { useGetUserSavedObjectPermissions } from '../../common/lib/kibana';
+import { useGetUserSavedObjectPermissions, useKibana } from '../../common/lib/kibana';
 import { SpyRoute } from '../../common/utils/route/spy_routes';
 import { AllCases } from '../components/all_cases';
 
@@ -16,9 +16,14 @@ import { savedObjectReadOnlyErrorMessage, CaseCallOut } from '../components/call
 import { CaseSavedObjectNoPermissions } from './saved_object_no_permissions';
 import { SecurityPageName } from '../../app/types';
 
+// TODO: Implement, global feature flag
+
 export const CasesPage = React.memo(() => {
   const userPermissions = useGetUserSavedObjectPermissions();
-
+  /**
+    const { cases } = useKibana().services;
+    {cases.casesPage({ userPermissions })}
+  */
   return userPermissions == null || userPermissions?.read ? (
     <>
       <WrapperPage>
