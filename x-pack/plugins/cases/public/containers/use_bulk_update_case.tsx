@@ -86,43 +86,47 @@ export const useUpdateCases = (): UseUpdateCases => {
   const isCancelledRef = useRef(false);
   const abortCtrlRef = useRef(new AbortController());
 
-  const dispatchUpdateCases = useCallback(async (cases: BulkUpdateStatus[], action: string) => {
-    try {
-      isCancelledRef.current = false;
-      abortCtrlRef.current.abort();
-      abortCtrlRef.current = new AbortController();
+  const dispatchUpdateCases = useCallback(
+    async (cases: BulkUpdateStatus[], action: string) => {
+      try {
+        isCancelledRef.current = false;
+        abortCtrlRef.current.abort();
+        abortCtrlRef.current = new AbortController();
 
-      dispatch({ type: 'FETCH_INIT' });
-      const patchResponse = await patchCasesStatus(cases, abortCtrlRef.current.signal);
+        dispatch({ type: 'FETCH_INIT' });
+        const patchResponse = await patchCasesStatus(cases, abortCtrlRef.current.signal);
 
-      if (!isCancelledRef.current) {
-        const resultCount = Object.keys(patchResponse).length;
-        const firstTitle = patchResponse[0].title;
+        if (!isCancelledRef.current) {
+          const resultCount = Object.keys(patchResponse).length;
+          const firstTitle = patchResponse[0].title;
 
-        dispatch({ type: 'FETCH_SUCCESS', payload: true });
-        const messageArgs = {
-          totalCases: resultCount,
-          caseTitle: resultCount === 1 ? firstTitle : '',
-        };
+          dispatch({ type: 'FETCH_SUCCESS', payload: true });
+          const messageArgs = {
+            totalCases: resultCount,
+            caseTitle: resultCount === 1 ? firstTitle : '',
+          };
 
-        const message =
-          action === 'status' ? getStatusToasterMessage(patchResponse[0].status, messageArgs) : '';
+          const message =
+            action === 'status'
+              ? getStatusToasterMessage(patchResponse[0].status, messageArgs)
+              : '';
 
-        toasts.addSuccess(message);
-      }
-    } catch (error) {
-      if (!isCancelledRef.current) {
-        if (error.name !== 'AbortError') {
-          toasts.addError(
-            error.body && error.body.message ? new Error(error.body.message) : error,
-            { title: i18n.ERROR_TITLE }
-          );
+          toasts.addSuccess(message);
         }
-        dispatch({ type: 'FETCH_FAILURE' });
+      } catch (error) {
+        if (!isCancelledRef.current) {
+          if (error.name !== 'AbortError') {
+            toasts.addError(
+              error.body && error.body.message ? new Error(error.body.message) : error,
+              { title: i18n.ERROR_TITLE }
+            );
+          }
+          dispatch({ type: 'FETCH_FAILURE' });
+        }
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    },
+    [toasts]
+  );
 
   const dispatchResetIsUpdated = useCallback(() => {
     dispatch({ type: 'RESET_IS_UPDATED' });
@@ -137,8 +141,7 @@ export const useUpdateCases = (): UseUpdateCases => {
       }));
       dispatchUpdateCases(updateCasesStatus, 'status');
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [dispatchUpdateCases]
   );
 
   useEffect(() => {

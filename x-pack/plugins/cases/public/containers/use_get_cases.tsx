@@ -232,14 +232,12 @@ export const useGetCases = (
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.filterOptions, state.queryParams]
+    [fetchCases, state.filterOptions, state.queryParams, toasts]
   );
 
   const refetchCases = useCallback(() => {
     fetchCases(state.filterOptions, state.queryParams);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.filterOptions, state.queryParams]);
+  }, [fetchCases, state.filterOptions, state.queryParams]);
 
   useEffect(() => {
     fetchCases(state.filterOptions, state.queryParams);
@@ -249,8 +247,7 @@ export const useGetCases = (
       abortCtrlFetchCases.current.abort();
       abortCtrlUpdateCases.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.queryParams, state.filterOptions]);
+  }, [state.queryParams, state.filterOptions, fetchCases]);
 
   return {
     ...state,

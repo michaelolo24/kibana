@@ -310,8 +310,7 @@ export const useGetCaseUserActions = (
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [caseUserActionsState]
+    [caseUserActionsState, toasts]
   );
 
   useEffect(() => {
@@ -323,7 +322,6 @@ export const useGetCaseUserActions = (
       isCancelledRef.current = true;
       abortCtrlRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId, subCaseId]);
+  }, [caseConnectorId, caseId, fetchCaseUserActions, subCaseId]);
   return { ...caseUserActionsState, fetchCaseUserActions };
 };

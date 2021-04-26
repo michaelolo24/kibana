@@ -166,8 +166,7 @@ const ConfigureCasesComponent: React.FC<ConfigureCasesProps> = ({ userCanCrud })
             reloadConnectors: onConnectorUpdate,
           })
         : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [addFlyoutVisible, supportedActionTypes]
+    [addFlyoutVisible, onCloseAddFlyout, onConnectorUpdate, supportedActionTypes, triggersActionsUi]
   );
 
   const ConnectorEditFlyout = useMemo(
@@ -180,8 +179,13 @@ const ConfigureCasesComponent: React.FC<ConfigureCasesProps> = ({ userCanCrud })
             reloadConnectors: onConnectorUpdate,
           })
         : null,
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [connector.id, editFlyoutVisible]
+    [
+      editedConnectorItem,
+      editFlyoutVisible,
+      onCloseEditFlyout,
+      onConnectorUpdate,
+      triggersActionsUi,
+    ]
   );
 
   return (

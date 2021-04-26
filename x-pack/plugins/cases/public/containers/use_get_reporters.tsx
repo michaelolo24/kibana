@@ -43,10 +43,10 @@ export const useGetReporters = (): UseGetReporters => {
       isCancelledRef.current = false;
       abortCtrlRef.current.abort();
       abortCtrlRef.current = new AbortController();
-      setReporterState({
-        ...reportersState,
+      setReporterState((currentReporterState) => ({
+        ...currentReporterState,
         isLoading: true,
-      });
+      }));
 
       const response = await getReporters(abortCtrlRef.current.signal);
       const myReporters = response
@@ -78,7 +78,7 @@ export const useGetReporters = (): UseGetReporters => {
         });
       }
     }
-  }, [reportersState, toasts]);
+  }, [toasts]);
 
   useEffect(() => {
     fetchReporters();
@@ -86,8 +86,7 @@ export const useGetReporters = (): UseGetReporters => {
       isCancelledRef.current = true;
       abortCtrlRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchReporters]);
 
   return { ...reportersState, fetchReporters };
 };

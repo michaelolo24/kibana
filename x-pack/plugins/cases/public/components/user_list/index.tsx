@@ -85,8 +85,7 @@ export const UserList = React.memo(({ email, headline, loading, users }: UserLis
         window.open(`mailto:${emailAddress}?subject=${email.subject}&body=${email.body}`, '_blank');
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [email.subject]
+    [email.body, email.subject]
   );
   return users.filter(({ username }) => username != null && username !== '').length > 0 ? (
     <EuiText>

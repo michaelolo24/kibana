@@ -67,8 +67,7 @@ export const useGetActionLicense = (): ActionLicenseState => {
         });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actionLicenseState]);
+  }, [toasts]);
 
   useEffect(() => {
     fetchActionLicense();
@@ -77,8 +76,7 @@ export const useGetActionLicense = (): ActionLicenseState => {
       isCancelledRef.current = true;
       abortCtrlRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchActionLicense]);
 
   return { ...actionLicenseState };
 };

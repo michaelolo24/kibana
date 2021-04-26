@@ -134,8 +134,7 @@ export const useUpdateCase = ({
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [caseId, subCaseId]
+    [caseId, subCaseId, toasts]
   );
 
   useEffect(() => {

@@ -84,8 +84,7 @@ export const useGetTags = (): UseGetTags => {
         dispatch({ type: 'FETCH_FAILURE' });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [toasts]);
 
   useEffect(() => {
     callFetch();
@@ -93,7 +92,6 @@ export const useGetTags = (): UseGetTags => {
       isCancelledRef.current = true;
       abortCtrlRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [callFetch]);
   return { ...state, fetchTags: callFetch };
 };

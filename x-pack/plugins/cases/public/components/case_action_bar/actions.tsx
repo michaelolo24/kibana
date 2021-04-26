@@ -43,12 +43,12 @@ const ActionsComponent: React.FC<CaseViewActions> = ({
         label: i18n.DELETE_CASE,
         onClick: handleToggleModal,
       },
-      ...(currentExternalIncident != null && !isEmpty(currentExternalIncident?.externalUrl)
+      ...(currentExternalIncident != null && !isEmpty(currentExternalIncident.externalUrl)
         ? [
             {
               iconType: 'popout',
-              label: i18n.VIEW_INCIDENT(currentExternalIncident?.externalTitle ?? ''),
-              onClick: () => window.open(currentExternalIncident?.externalUrl, '_blank'),
+              label: i18n.VIEW_INCIDENT(currentExternalIncident.externalTitle ?? ''),
+              onClick: () => window.open(currentExternalIncident.externalUrl, '_blank'),
             },
           ]
         : []),
@@ -60,6 +60,7 @@ const ActionsComponent: React.FC<CaseViewActions> = ({
     history.push('/');
     return null;
   }
+
   return (
     <>
       <PropertyActions propertyActions={propertyActions} />

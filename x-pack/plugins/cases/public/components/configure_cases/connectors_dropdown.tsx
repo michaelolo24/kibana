@@ -101,8 +101,7 @@ const ConnectorsDropdownComponent: React.FC<Props> = ({
     }
 
     return connectorsFormatted;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectors]);
+  }, [appendAddConnectorButton, connectors, hideConnectorServiceNowSir]);
 
   return (
     <EuiSuperSelect

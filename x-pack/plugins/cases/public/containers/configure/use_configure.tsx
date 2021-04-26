@@ -256,8 +256,17 @@ export const useCaseConfigure = (): ReturnUseCaseConfigure => {
         setLoading(false);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.firstLoad]);
+  }, [
+    setClosureType,
+    setConnector,
+    setCurrentConfiguration,
+    setFirstLoad,
+    setLoading,
+    setMappings,
+    setVersion,
+    state.firstLoad,
+    toasts,
+  ]);
 
   const persistCaseConfigure = useCallback(
     async ({ connector, closureType }: ConnectorConfiguration) => {
@@ -341,8 +350,7 @@ export const useCaseConfigure = (): ReturnUseCaseConfigure => {
       isCancelledPersistRef.current = true;
       abortCtrlPersistRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refetchCaseConfigure]);
 
   return {
     ...state,

@@ -211,4 +211,4 @@ const JiraFieldsComponent: React.FunctionComponent<ConnectorFieldsProps<JiraFiel
 };
 
 // eslint-disable-next-line import/no-default-export
-export { JiraFieldsComponent as default };
+export default JiraFieldsComponent;

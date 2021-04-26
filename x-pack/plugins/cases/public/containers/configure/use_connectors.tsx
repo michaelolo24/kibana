@@ -51,8 +51,7 @@ export const useConnectors = (): UseConnectorsResponse => {
         setConnectors([]);
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [toasts]);
 
   useEffect(() => {
     refetchConnectors();
@@ -60,8 +59,7 @@ export const useConnectors = (): UseConnectorsResponse => {
       isCancelledRef.current = true;
       abortCtrlRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refetchConnectors]);
 
   return {
     loading,

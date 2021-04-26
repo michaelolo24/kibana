@@ -93,8 +93,7 @@ export const usePostPushToService = (): UsePostPushToService => {
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [toasts]
   );
 
   useEffect(() => {

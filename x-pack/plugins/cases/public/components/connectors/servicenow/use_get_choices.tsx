@@ -91,8 +91,7 @@ export const useGetChoices = ({
       didCancel.current = true;
       abortCtrl.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [http, connector, toastNotifications, fields]);
+  }, [http, connector, toastNotifications, fields, onSuccess]);
 
   return {
     choices,

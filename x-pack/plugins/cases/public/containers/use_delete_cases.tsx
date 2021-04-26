@@ -77,40 +77,42 @@ export const useDeleteCases = (): UseDeleteCase => {
   const isCancelledRef = useRef(false);
   const abortCtrlRef = useRef(new AbortController());
 
-  const dispatchDeleteCases = useCallback(async (cases: DeleteCase[]) => {
-    try {
-      isCancelledRef.current = false;
-      abortCtrlRef.current.abort();
-      abortCtrlRef.current = new AbortController();
-      dispatch({ type: 'FETCH_INIT' });
+  const dispatchDeleteCases = useCallback(
+    async (cases: DeleteCase[]) => {
+      try {
+        isCancelledRef.current = false;
+        abortCtrlRef.current.abort();
+        abortCtrlRef.current = new AbortController();
+        dispatch({ type: 'FETCH_INIT' });
 
-      const caseIds = cases.map((theCase) => theCase.id);
-      // We don't allow user batch delete sub cases on UI at the moment.
-      if (cases[0].type != null || cases.length > 1) {
-        await deleteCases(caseIds, abortCtrlRef.current.signal);
-      } else {
-        await deleteSubCases(caseIds, abortCtrlRef.current.signal);
-      }
+        const caseIds = cases.map((theCase) => theCase.id);
+        // We don't allow user batch delete sub cases on UI at the moment.
+        if (cases[0].type != null || cases.length > 1) {
+          await deleteCases(caseIds, abortCtrlRef.current.signal);
+        } else {
+          await deleteSubCases(caseIds, abortCtrlRef.current.signal);
+        }
 
-      if (!isCancelledRef.current) {
-        dispatch({ type: 'FETCH_SUCCESS', payload: true });
-        toasts.addSuccess(
-          i18n.DELETED_CASES(cases.length, cases.length === 1 ? cases[0].title : '')
-        );
-      }
-    } catch (error) {
-      if (!isCancelledRef.current) {
-        if (error.name !== 'AbortError') {
-          toasts.addError(
-            error.body && error.body.message ? new Error(error.body.message) : error,
-            { title: i18n.ERROR_DELETING }
+        if (!isCancelledRef.current) {
+          dispatch({ type: 'FETCH_SUCCESS', payload: true });
+          toasts.addSuccess(
+            i18n.DELETED_CASES(cases.length, cases.length === 1 ? cases[0].title : '')
           );
         }
-        dispatch({ type: 'FETCH_FAILURE' });
+      } catch (error) {
+        if (!isCancelledRef.current) {
+          if (error.name !== 'AbortError') {
+            toasts.addError(
+              error.body && error.body.message ? new Error(error.body.message) : error,
+              { title: i18n.ERROR_DELETING }
+            );
+          }
+          dispatch({ type: 'FETCH_FAILURE' });
+        }
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    },
+    [toasts]
+  );
 
   const dispatchToggleDeleteModal = useCallback(() => {
     dispatch({ type: 'DISPLAY_MODAL', payload: !state.isDisplayConfirmDeleteModal });
@@ -118,21 +120,18 @@ export const useDeleteCases = (): UseDeleteCase => {
 
   const dispatchResetIsDeleted = useCallback(() => {
     dispatch({ type: 'RESET_IS_DELETED' });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.isDisplayConfirmDeleteModal]);
+  }, []);
 
   const handleOnDeleteConfirm = useCallback(
     (cases: DeleteCase[]) => {
       dispatchDeleteCases(cases);
       dispatchToggleDeleteModal();
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [state.isDisplayConfirmDeleteModal]
+    [dispatchDeleteCases, dispatchToggleDeleteModal]
   );
   const handleToggleModal = useCallback(() => {
     dispatchToggleDeleteModal();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.isDisplayConfirmDeleteModal]);
+  }, [dispatchToggleDeleteModal]);
 
   useEffect(() => {
     return () => {

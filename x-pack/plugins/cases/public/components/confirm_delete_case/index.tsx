@@ -17,36 +17,31 @@ interface ConfirmDeleteCaseModalProps {
   onConfirm: () => void;
 }
 
-const ConfirmDeleteCaseModalComp: React.FC<ConfirmDeleteCaseModalProps> = ({
-  caseTitle,
-  isModalVisible,
-  isPlural,
-  onCancel,
-  onConfirm,
-}) => {
-  if (!isModalVisible) {
-    return null;
-  }
-  return (
-    <EuiConfirmModal
-      buttonColor="danger"
-      cancelButtonText={i18n.CANCEL}
-      confirmButtonText={isPlural ? i18n.DELETE_CASES : i18n.DELETE_CASE}
-      data-test-subj="confirm-delete-case-modal"
-      defaultFocusedButton="confirm"
-      onCancel={onCancel}
-      onConfirm={onConfirm}
-      title={
-        isPlural
-          ? i18n.DELETE_SELECTED_CASES
-          : caseTitle == null
-          ? i18n.DELETE_THIS_CASE
-          : i18n.DELETE_TITLE(caseTitle)
-      }
-    >
-      {isPlural ? i18n.CONFIRM_QUESTION_PLURAL : i18n.CONFIRM_QUESTION}
-    </EuiConfirmModal>
-  );
-};
+export const ConfirmDeleteCaseModal: React.FC<ConfirmDeleteCaseModalProps> = React.memo(
+  ({ caseTitle, isModalVisible, isPlural, onCancel, onConfirm }) => {
+    if (!isModalVisible) {
+      return null;
+    }
 
-export const ConfirmDeleteCaseModal = React.memo(ConfirmDeleteCaseModalComp);
+    return (
+      <EuiConfirmModal
+        buttonColor="danger"
+        cancelButtonText={i18n.CANCEL}
+        confirmButtonText={isPlural ? i18n.DELETE_CASES : i18n.DELETE_CASE}
+        data-test-subj="confirm-delete-case-modal"
+        defaultFocusedButton="confirm"
+        onCancel={onCancel}
+        onConfirm={onConfirm}
+        title={
+          isPlural
+            ? i18n.DELETE_SELECTED_CASES
+            : caseTitle
+            ? i18n.DELETE_TITLE(caseTitle)
+            : i18n.DELETE_THIS_CASE
+        }
+      >
+        {isPlural ? i18n.CONFIRM_QUESTION_PLURAL : i18n.CONFIRM_QUESTION}
+      </EuiConfirmModal>
+    );
+  }
+);

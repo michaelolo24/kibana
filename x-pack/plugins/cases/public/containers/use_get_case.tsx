@@ -99,8 +99,7 @@ export const useGetCase = (caseId: string, subCaseId?: string): UseGetCase => {
         dispatch({ type: 'FETCH_FAILURE' });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId, subCaseId]);
+  }, [caseId, subCaseId, toasts]);
 
   useEffect(() => {
     callFetch();
@@ -109,7 +108,6 @@ export const useGetCase = (caseId: string, subCaseId?: string): UseGetCase => {
       isCancelledRef.current = true;
       abortCtrlRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseId, subCaseId]);
+  }, [callFetch, caseId, subCaseId]);
   return { ...state, fetchCase: callFetch, updateCase };
 };

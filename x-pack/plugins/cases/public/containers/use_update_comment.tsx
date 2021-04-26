@@ -115,8 +115,7 @@ export const useUpdateComment = (): UseUpdateComment => {
         }
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
+    [toasts]
   );
 
   useEffect(() => {

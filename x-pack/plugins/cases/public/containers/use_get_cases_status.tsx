@@ -71,8 +71,7 @@ export const useGetCasesStatus = (): UseGetCasesStatus => {
         });
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [toasts]);
 
   useEffect(() => {
     fetchCasesStatus();
@@ -81,8 +80,7 @@ export const useGetCasesStatus = (): UseGetCasesStatus => {
       isCancelledRef.current = true;
       abortCtrlRef.current.abort();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchCasesStatus]);
 
   return {
     ...casesStatusState,

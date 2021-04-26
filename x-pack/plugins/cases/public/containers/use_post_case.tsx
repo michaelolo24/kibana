@@ -53,32 +53,34 @@ export const usePostCase = (): UsePostCase => {
   const isCancelledRef = useRef(false);
   const abortCtrlRef = useRef(new AbortController());
 
-  const postMyCase = useCallback(async (data: CasePostRequest) => {
-    try {
-      isCancelledRef.current = false;
-      abortCtrlRef.current.abort();
-      abortCtrlRef.current = new AbortController();
+  const postMyCase = useCallback(
+    async (data: CasePostRequest) => {
+      try {
+        isCancelledRef.current = false;
+        abortCtrlRef.current.abort();
+        abortCtrlRef.current = new AbortController();
 
-      dispatch({ type: 'FETCH_INIT' });
-      const response = await postCase(data, abortCtrlRef.current.signal);
+        dispatch({ type: 'FETCH_INIT' });
+        const response = await postCase(data, abortCtrlRef.current.signal);
 
-      if (!isCancelledRef.current) {
-        dispatch({ type: 'FETCH_SUCCESS' });
-      }
-      return response;
-    } catch (error) {
-      if (!isCancelledRef.current) {
-        if (error.name !== 'AbortError') {
-          toasts.addError(
-            error.body && error.body.message ? new Error(error.body.message) : error,
-            { title: i18n.ERROR_TITLE }
-          );
+        if (!isCancelledRef.current) {
+          dispatch({ type: 'FETCH_SUCCESS' });
         }
-        dispatch({ type: 'FETCH_FAILURE' });
+        return response;
+      } catch (error) {
+        if (!isCancelledRef.current) {
+          if (error.name !== 'AbortError') {
+            toasts.addError(
+              error.body && error.body.message ? new Error(error.body.message) : error,
+              { title: i18n.ERROR_TITLE }
+            );
+          }
+          dispatch({ type: 'FETCH_FAILURE' });
+        }
       }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    },
+    [toasts]
+  );
 
   useEffect(() => {
     return () => {

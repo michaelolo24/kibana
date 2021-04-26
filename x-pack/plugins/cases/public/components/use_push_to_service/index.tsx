@@ -140,8 +140,16 @@ export const usePushToService = ({
       errors = [...errors, getKibanaConfigError()];
     }
     return errors;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actionLicense, caseStatus, connectors.length, connector, loadingLicense]);
+  }, [
+    actionLicense,
+    caseStatus,
+    connectors.length,
+    connector.id,
+    loadingLicense,
+    isValidConnector,
+    onClick,
+    href,
+  ]);
 
   const pushToServiceButton = useMemo(() => {
     return (
@@ -160,16 +168,16 @@ export const usePushToService = ({
           : i18n.PUSH_THIRD(connector.name)}
       </EuiButton>
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
-    connector,
-    connectors,
-    errorsMsg,
     handlePushToService,
     isLoading,
     loadingLicense,
+    errorsMsg.length,
     userCanCrud,
     isValidConnector,
+    caseServices,
+    connector.id,
+    connector.name,
   ]);
 
   const objToReturn = useMemo(() => {
