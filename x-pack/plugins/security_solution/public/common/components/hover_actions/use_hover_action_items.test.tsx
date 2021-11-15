@@ -115,7 +115,7 @@ describe('useHoverActionItems', () => {
     });
   });
 
-  test('it should hide the Top N action when hideTopN is true', async () => {
+  test.skip('it should hide the Top N action when hideTopN is true', async () => {
     await act(async () => {
       const { result, waitForNextUpdate } = renderHook(() => {
         const testProps = {
