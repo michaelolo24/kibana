@@ -11,12 +11,7 @@ import styled from 'styled-components';
 import type { Filter } from '@kbn/es-query';
 import { inputsModel, State } from '../../store';
 import { inputsActions } from '../../store/actions';
-import {
-  ControlColumnProps,
-  RowRenderer,
-  TimelineId,
-  TimelineTabs,
-} from '../../../../common/types/timeline';
+import { ControlColumnProps, RowRenderer, TimelineId } from '../../../../common/types/timeline';
 import { APP_ID, APP_UI_ID } from '../../../../common/constants';
 import { timelineActions } from '../../../timelines/store/timeline';
 import type { SubsetTimelineModel } from '../../../timelines/store/timeline/model';
@@ -29,6 +24,7 @@ import { SourcererScopeName } from '../../store/sourcerer/model';
 import { useSourcererDataView } from '../../containers/sourcerer';
 import type { EntityType } from '../../../../../timelines/common';
 import { TGridCellAction } from '../../../../../timelines/common/types';
+import { DetailsPanel } from '../../../timelines/components/side_panel';
 import { CellValueElementProps } from '../../../timelines/components/timeline/cell_rendering';
 import { FIELDS_WITHOUT_CELL_ACTIONS } from '../../lib/cell_actions/constants';
 import { useGetUserCasesPermissions, useKibana } from '../../lib/kibana';
@@ -37,7 +33,6 @@ import {
   useFieldBrowserOptions,
   FieldEditorActions,
 } from '../../../timelines/components/fields_browser';
-import { useDetailPanel } from '../../../timelines/components/side_panel/hooks/use_detail_panel';
 
 const EMPTY_CONTROL_COLUMNS: ControlColumnProps[] = [];
 
@@ -161,22 +156,11 @@ const StatefulEventsViewerComponent: React.FC<Props> = ({
 
   const globalFilters = useMemo(() => [...filters, ...(pageFilters ?? [])], [filters, pageFilters]);
   const trailingControlColumns: ControlColumnProps[] = EMPTY_CONTROL_COLUMNS;
-
-  const { openDetailsPanel, DetailsPanel } = useDetailPanel({
-    isFlyoutView: true,
-    entityType,
-    sourcererScope: SourcererScopeName.timeline,
-    timelineId: id,
-    tabType: TimelineTabs.query,
-  });
-
   const graphOverlay = useMemo(() => {
     const shouldShowOverlay =
       (graphEventId != null && graphEventId.length > 0) || sessionViewId !== null;
-    return shouldShowOverlay ? (
-      <GraphOverlay timelineId={id} openDetailsPanel={openDetailsPanel} />
-    ) : null;
-  }, [graphEventId, id, sessionViewId, openDetailsPanel]);
+    return shouldShowOverlay ? <GraphOverlay timelineId={id} /> : null;
+  }, [graphEventId, id, sessionViewId]);
   const setQuery = useCallback(
     (inspect, loading, refetch) => {
       dispatch(inputsActions.setQuery({ id, inputId: 'global', inspect, loading, refetch }));
@@ -256,7 +240,14 @@ const StatefulEventsViewerComponent: React.FC<Props> = ({
             })}
           </InspectButtonContainer>
         </FullScreenContainer>
-        {DetailsPanel}
+        <DetailsPanel
+          browserFields={browserFields}
+          entityType={entityType}
+          docValueFields={docValueFields}
+          isFlyoutView
+          runtimeMappings={runtimeMappings}
+          timelineId={id}
+        />
       </CasesContext>
     </>
   );

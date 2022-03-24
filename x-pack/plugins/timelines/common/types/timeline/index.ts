@@ -462,7 +462,6 @@ export enum TimelineTabs {
   graph = 'graph',
   notes = 'notes',
   pinned = 'pinned',
-  session = 'session',
   eql = 'eql',
 }
 

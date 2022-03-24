@@ -10,11 +10,9 @@ import React, { useMemo } from 'react';
 import styled from 'styled-components';
 import { timelineSelectors } from '../../../store/timeline';
 import { useKibana } from '../../../../common/lib/kibana';
-import { TimelineId, TimelineTabs } from '../../../../../common/types/timeline';
+import { TimelineId } from '../../../../../common/types/timeline';
 import { timelineDefaults } from '../../../../timelines/store/timeline/defaults';
 import { useDeepEqualSelector } from '../../../../common/hooks/use_selector';
-import { useDetailPanel } from '../../side_panel/hooks/use_detail_panel';
-import { SourcererScopeName } from '../../../../common/store/sourcerer/model';
 
 const FullWidthFlexGroup = styled(EuiFlexGroup)`
   margin: 0;
@@ -27,48 +25,23 @@ const ScrollableFlexItem = styled(EuiFlexItem)`
   overflow: hidden;
 `;
 
-const VerticalRule = styled.div`
-  width: 2px;
-  height: 100%;
-  background: ${({ theme }) => theme.eui.euiColorLightShade};
-`;
-
 interface Props {
   timelineId: TimelineId;
 }
 
 const SessionTabContent: React.FC<Props> = ({ timelineId }) => {
   const { sessionView } = useKibana().services;
+
   const getTimeline = useMemo(() => timelineSelectors.getTimelineByIdSelector(), []);
 
   const sessionViewId = useDeepEqualSelector(
     (state) => (getTimeline(state, timelineId) ?? timelineDefaults).sessionViewId
   );
-  const { openDetailsPanel, shouldShowDetailsPanel, DetailsPanel } = useDetailPanel({
-    sourcererScope: SourcererScopeName.timeline,
-    timelineId,
-    tabType: TimelineTabs.session,
-  });
   const sessionViewMain = useMemo(() => {
-    return sessionViewId !== null
-      ? sessionView.getSessionView({
-          sessionEntityId: sessionViewId,
-          loadAlertDetails: openDetailsPanel,
-        })
-      : null;
-  }, [openDetailsPanel, sessionView, sessionViewId]);
+    return sessionViewId !== null ? sessionView.getSessionView(sessionViewId) : null;
+  }, [sessionView, sessionViewId]);
 
-  return (
-    <FullWidthFlexGroup gutterSize="none">
-      <ScrollableFlexItem grow={2}>{sessionViewMain}</ScrollableFlexItem>
-      {shouldShowDetailsPanel && (
-        <>
-          <VerticalRule />
-          <ScrollableFlexItem grow={1}>{DetailsPanel}</ScrollableFlexItem>
-        </>
-      )}
-    </FullWidthFlexGroup>
-  );
+  return <ScrollableFlexItem grow={2}>{sessionViewMain}</ScrollableFlexItem>;
 };
 
 // eslint-disable-next-line import/no-default-export
