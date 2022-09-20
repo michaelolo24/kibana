@@ -5,10 +5,10 @@
  * 2.0.
  */
 
+import type { EuiPageHeaderProps } from '@elastic/eui';
 import { EuiProgress, EuiPageHeader, EuiPageHeaderSection, EuiSpacer } from '@elastic/eui';
 import React from 'react';
 import styled, { css } from 'styled-components';
-
 import type { LinkIconProps } from '../link_icon';
 import { LinkIcon } from '../link_icon';
 import type { SubtitleProps } from '../subtitle';
@@ -20,6 +20,7 @@ import type { SecurityPageName } from '../../../app/types';
 import { useKibana } from '../../lib/kibana';
 interface HeaderProps {
   border?: boolean;
+  rightSideItems?: EuiPageHeaderProps['rightSideItems'];
   isLoading?: boolean;
 }
 
@@ -104,13 +105,14 @@ const HeaderPageComponent: React.FC<HeaderPageProps> = ({
   children,
   draggableArguments,
   isLoading,
+  rightSideItems,
   subtitle,
   subtitle2,
   title,
   titleNode,
 }) => (
   <>
-    <EuiPageHeader alignItems="center" bottomBorder={border}>
+    <EuiPageHeader alignItems="center" bottomBorder={border} rightSideItems={rightSideItems}>
       <HeaderSection>
         {backOptions && <HeaderLinkBack backOptions={backOptions} />}
         {!backOptions && backComponent && <>{backComponent}</>}

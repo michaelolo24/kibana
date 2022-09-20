@@ -18,6 +18,7 @@ export interface GetBasicDataFromDetailsData {
   hostName: string;
   userName: string;
   ruleName: string;
+  status: string;
   timestamp: string;
 }
 
@@ -53,6 +54,11 @@ export const useBasicDataFromDetailsData = (
     [data]
   );
 
+  const status = useMemo(
+    () => getFieldValue({ category: 'kibana', field: 'kibana.alert.workflow_status' }, data),
+    [data]
+  );
+
   return useMemo(
     () => ({
       alertId,
@@ -61,9 +67,10 @@ export const useBasicDataFromDetailsData = (
       hostName,
       userName,
       ruleName,
+      status,
       timestamp,
     }),
-    [agentId, alertId, hostName, isAlert, ruleName, timestamp, userName]
+    [agentId, alertId, hostName, isAlert, ruleName, status, timestamp, userName]
   );
 };
 

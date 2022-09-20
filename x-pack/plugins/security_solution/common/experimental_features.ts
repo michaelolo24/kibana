@@ -57,6 +57,11 @@ export const allowedExperimentalValues = Object.freeze({
   socTrendsEnabled: false,
 
   /**
+   * Enables the alert details page currently only accessible via the alert details flyout
+   */
+  alertDetailsPageEnabled: false,
+
+  /**
    * Enables the detection response actions in rule + alerts
    */
   responseActionsEnabled: true,
