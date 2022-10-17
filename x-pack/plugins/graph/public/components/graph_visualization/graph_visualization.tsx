@@ -50,6 +50,7 @@ export function GraphVisualization({
   onSetControl,
   onSetMergeCandidates,
 }: GraphVisualizationProps) {
+  console.log("WORKSPACE VISUALIZATION: ", workspace);
   const svgRoot = useRef<SVGSVGElement | null>(null);
 
   const nodeClick = (n: WorkspaceNode, event: React.MouseEvent) => {
