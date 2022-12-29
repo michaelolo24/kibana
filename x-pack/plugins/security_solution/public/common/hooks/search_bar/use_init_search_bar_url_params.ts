@@ -14,6 +14,8 @@ import { inputsSelectors } from '../../store';
 import { inputsActions } from '../../store/inputs';
 import { useInitializeUrlParam } from '../../utils/global_query_string';
 import { URL_PARAM_KEY } from '../use_url_state';
+import type { FlyoutModel } from '../../store/flyout/model';
+import { flyoutActions } from '../../store/flyout';
 
 export const useInitSearchBarFromUrlParams = () => {
   const dispatch = useDispatch();
@@ -64,6 +66,15 @@ export const useInitSearchBarFromUrlParams = () => {
     [filterManager, dispatch, filtersFromStore]
   );
 
+  const onInitializeFlyoutFromUrlParam = useCallback(
+    (initialState: FlyoutModel | null) => {
+      if (initialState != null) {
+        dispatch(flyoutActions.initializeSecurityFlyout(initialState));
+      }
+    },
+    [dispatch]
+  );
+
   const onInitializeSavedQueryFromUrlParam = useCallback(
     (savedQueryId: string | null) => {
       if (savedQueryId != null && savedQueryId !== '') {
@@ -96,5 +107,6 @@ export const useInitSearchBarFromUrlParams = () => {
 
   useInitializeUrlParam(URL_PARAM_KEY.appQuery, onInitializeAppQueryFromUrlParam);
   useInitializeUrlParam(URL_PARAM_KEY.filters, onInitializeFiltersFromUrlParam);
+  useInitializeUrlParam(URL_PARAM_KEY.flyout, onInitializeFlyoutFromUrlParam);
   useInitializeUrlParam(URL_PARAM_KEY.savedQuery, onInitializeSavedQueryFromUrlParam);
 };

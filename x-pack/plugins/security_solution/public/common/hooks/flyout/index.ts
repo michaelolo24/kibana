@@ -5,9 +5,10 @@
  * 2.0.
  */
 
-export { appModel } from './app';
-export { dragAndDropModel } from './drag_and_drop';
-export { inputsModel } from './inputs';
-export { sourcererModel } from './sourcerer';
-export { flyoutModel } from './flyout';
-export * from './types';
+import { useInitFlyoutFromUrlParam } from './use_init_flyout_url_params';
+import { useSyncFlyoutUrlParam } from './use_sync_flyout_url_params';
+
+export const useFlyoutUrlStateSync = () => {
+  useInitFlyoutFromUrlParam();
+  useSyncFlyoutUrlParam();
+};

@@ -85,15 +85,15 @@ export const fetchEventsAndScopedAlerts = async (
         bool: {
           must: [
             { term: { [ENTRY_SESSION_ENTITY_ID_PROPERTY]: sessionEntityId } },
-            {
-              bool: {
-                should: [
-                  { term: { [EVENT_ACTION]: 'fork' } },
-                  { term: { [EVENT_ACTION]: 'exec' } },
-                  { term: { [EVENT_ACTION]: 'end' } },
-                ],
-              },
-            },
+            // {
+            //   bool: {
+            //     should: [
+            //       { term: { [EVENT_ACTION]: 'fork' } },
+            //       { term: { [EVENT_ACTION]: 'exec' } },
+            //       { term: { [EVENT_ACTION]: 'end' } },
+            //     ],
+            //   },
+            // },
           ],
         },
       },

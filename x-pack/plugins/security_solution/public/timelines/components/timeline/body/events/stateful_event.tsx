@@ -8,6 +8,7 @@
 import { EuiFlexGroup, EuiFlexItem } from '@elastic/eui';
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
+import { openSecurityEventFlyout } from '../../../../../common/store/flyout/actions';
 import { useDeepEqualSelector } from '../../../../../common/hooks/use_selector';
 import type {
   ColumnHeaderOptions,
@@ -204,6 +205,16 @@ const StatefulEventComponent: React.FC<Props> = ({
         ...updatedExpandedDetail,
         tabType,
         id: timelineId,
+      })
+    );
+
+    dispatch(
+      openSecurityEventFlyout({
+        flyoutKind: 'event',
+        params: {
+          eventId,
+          indexName,
+        },
       })
     );
 

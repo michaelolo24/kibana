@@ -5,17 +5,18 @@
  * 2.0.
  */
 import type { AlertsTableFlyoutBaseProps } from '@kbn/triggers-actions-ui-plugin/public';
+import { EntityType } from '@kbn/timelines-plugin/common';
 import { noop } from 'lodash/fp';
 import React, { useCallback, useMemo, useState } from 'react';
 
-import { TimelineId } from '../../../../../../common/types';
+import { useTimelineEventsDetails } from '../../../timelines/containers/details';
+import { TimelineId } from '../../../../common/types';
 import { useHostIsolationTools } from '../use_host_isolation_tools';
 import { FlyoutHeaderContent } from './header';
 import { FlyoutBody } from './body';
 import { FlyoutFooter } from './footer';
-import { useTimelineEventsDetails } from '../../../../containers/details';
-import { useSourcererDataView } from '../../../../../common/containers/sourcerer';
-import { SourcererScopeName } from '../../../../../common/store/sourcerer/model';
+import { useSourcererDataView } from '../../../common/containers/sourcerer';
+import { SourcererScopeName } from '../../../common/store/sourcerer/model';
 import { useBasicDataFromDetailsData } from '../helpers';
 
 export { FlyoutBody } from './body';
@@ -31,6 +32,7 @@ export const useToGetInternalFlyout = () => {
 
   const [loading, detailsData, rawEventData, ecsData, refetchFlyoutData] = useTimelineEventsDetails(
     {
+      entityType: EntityType.EVENTS,
       indexName: alert.indexName ?? '',
       eventId: alert.id ?? '',
       runtimeMappings,

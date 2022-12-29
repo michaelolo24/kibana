@@ -22,6 +22,7 @@ import type { ManagementPluginState } from '../../management';
 import type { UsersPluginState } from '../../explore/users/store';
 import type { GlobalUrlParam } from './global_url_param';
 import type { DataTableState } from './data_table/types';
+import type { FlyoutState } from './flyout/model';
 
 export type State = HostsPluginState &
   UsersPluginState &
@@ -31,6 +32,7 @@ export type State = HostsPluginState &
   ManagementPluginState & {
     app: AppState;
     dragAndDrop: DragAndDropState;
+    flyout: FlyoutState;
     inputs: InputsState;
     sourcerer: SourcererState;
     globalUrlParam: GlobalUrlParam;
