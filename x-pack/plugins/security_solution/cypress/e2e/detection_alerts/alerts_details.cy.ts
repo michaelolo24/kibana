@@ -9,6 +9,7 @@ import {
   ALERT_FLYOUT,
   CELL_TEXT,
   JSON_TEXT,
+  OVERVIEW_RULE,
   TABLE_CONTAINER,
   TABLE_ROWS,
 } from '../../screens/alerts_details';
@@ -45,6 +46,16 @@ describe('Alert details with unmapped fields', () => {
 
   after(() => {
     esArchiverUnload('unmapped_fields');
+  });
+
+  it('Stores the flyout state in the url', () => {
+    expandFirstAlert();
+    cy.get(OVERVIEW_RULE).should('be.visible');
+    cy.reload();
+    cy.get(OVERVIEW_RULE).should('be.visible');
+    cy.get(OVERVIEW_RULE).then((field) => {
+      expect(field).to.contain('Rule with unmapped fields');
+    });
   });
 
   it('Displays the unmapped field on the JSON view', () => {

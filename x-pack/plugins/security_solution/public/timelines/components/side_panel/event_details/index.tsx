@@ -133,6 +133,7 @@ const EventDetailsPanelComponent: React.FC<EventDetailsPanelProps> = ({
           rawEventData={rawEventData}
           showAlertDetails={showAlertDetails}
           scopeId={scopeId}
+          timestamp={timestamp}
           isReadOnly={isReadOnly}
         />
       );
@@ -177,26 +178,27 @@ const EventDetailsPanelComponent: React.FC<EventDetailsPanelProps> = ({
       );
     }
   }, [
+    isFlyoutView,
+    isHostIsolationPanelOpen,
     alertId,
     browserFields,
     detailsData,
     ecsData,
     expandedEvent,
+    hostName,
     handleIsolationActionSuccess,
     handleOnEventClosed,
-    hostName,
     isAlert,
     isDraggable,
-    isFlyoutView,
-    isHostIsolationPanelOpen,
-    isIsolateActionSuccessBannerVisible,
-    isReadOnly,
     isolateAction,
+    isIsolateActionSuccessBannerVisible,
     loading,
     rawEventData,
     showAlertDetails,
-    tabType,
     scopeId,
+    timestamp,
+    isReadOnly,
+    tabType,
   ]);
 
   if (!expandedEvent?.eventId) {
