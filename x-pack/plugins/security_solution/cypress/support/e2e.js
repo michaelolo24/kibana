@@ -23,10 +23,10 @@
 // Import commands.js using ES2015 syntax:
 import './commands';
 import 'cypress-pipe';
+import './e2e/uncaught_exception';
+import { testSuitePerformance } from './e2e/performance';
 
-Cypress.on('uncaught:exception', () => {
-  return false;
-});
+testSuitePerformance(true);
 
 // Alternatively you can use CommonJS syntax:
 // require('./commands')
