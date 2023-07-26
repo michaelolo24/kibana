@@ -15,6 +15,7 @@ import {
   EuiFlyoutSize,
   EuiDataGridProps,
   EuiDataGridToolBarVisibilityOptions,
+  EuiDataGridControlColumn,
 } from '@elastic/eui';
 import type { MappingRuntimeFields } from '@elastic/elasticsearch/lib/api/typesWithBodyKey';
 import { ALERT_CASE_IDS, ALERT_MAINTENANCE_WINDOW_IDS } from '@kbn/rule-data-utils';
@@ -58,6 +59,8 @@ const DefaultPagination = {
   pageSize: 10,
   pageIndex: 0,
 };
+const defaultPageSizeOptions = [10, 20, 50, 100];
+const emptyArray = [] as unknown[];
 
 export type AlertsTableStateProps = {
   alertsTableConfigurationRegistry: TypeRegistry<AlertsTableConfigurationRegistry>;
@@ -375,17 +378,17 @@ const AlertsTableStateWithQueryProvider = ({
       cases: memoizedCases,
       maintenanceWindows: memoizedMaintenanceWindows,
       columns,
-      bulkActions: [],
-      deletedEventIds: [],
-      disabledCellActions: [],
+      bulkActions: emptyArray,
+      deletedEventIds: emptyArray as string[],
+      disabledCellActions: emptyArray as string[],
       flyoutSize,
       pageSize: pagination.pageSize,
-      pageSizeOptions: [10, 20, 50, 100],
+      pageSizeOptions: defaultPageSizeOptions,
       id,
-      leadingControlColumns: leadingControlColumns ?? [],
+      leadingControlColumns: leadingControlColumns ?? (emptyArray as EuiDataGridControlColumn[]),
       showExpandToDetails,
       showAlertStatusWithFlapping,
-      trailingControlColumns: [],
+      trailingControlColumns: emptyArray as EuiDataGridControlColumn[],
       useFetchAlertsData,
       visibleColumns,
       'data-test-subj': 'internalAlertsState',

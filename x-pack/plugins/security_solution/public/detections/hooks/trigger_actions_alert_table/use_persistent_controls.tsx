@@ -110,6 +110,10 @@ export const getPersistentControlsHook = (tableId: TableId) => {
       ]
     );
 
+    const additionalMenuOptions = useMemo(
+      () => (groupSelector != null ? [groupSelector] : []),
+      [groupSelector]
+    );
     const rightTopMenu = useMemo(
       () => (
         <RightTopMenu
@@ -117,20 +121,23 @@ export const getPersistentControlsHook = (tableId: TableId) => {
           tableView={tableView}
           loading={false}
           tableId={tableId}
-          title={'Some Title'}
+          title="Security Persistent Controls"
           onViewChange={handleChangeTableView}
           hasRightOffset={false}
           additionalFilters={additionalFiltersComponent}
           showInspect={false}
-          additionalMenuOptions={groupSelector != null ? [groupSelector] : []}
+          additionalMenuOptions={additionalMenuOptions}
         />
       ),
-      [tableView, handleChangeTableView, additionalFiltersComponent, groupSelector]
+      [tableView, handleChangeTableView, additionalFiltersComponent, additionalMenuOptions]
     );
 
-    return {
-      right: rightTopMenu,
-    };
+    return useMemo(
+      () => ({
+        right: rightTopMenu,
+      }),
+      [rightTopMenu]
+    );
   };
 
   return usePersistentControls;
