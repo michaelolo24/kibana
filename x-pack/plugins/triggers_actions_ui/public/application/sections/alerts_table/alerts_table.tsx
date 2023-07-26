@@ -450,6 +450,21 @@ const AlertsTable: React.FunctionComponent<AlertsTableProps> = (props: AlertsTab
     return mergedGridStyle;
   }, [activeRowClasses, highlightedRowClasses, props.gridStyle]);
 
+  const paginationConfiguration = useMemo(
+    () => ({
+      ...pagination,
+      pageSizeOptions: props.pageSizeOptions,
+      onChangeItemsPerPage: onChangePageSize,
+      onChangePage: onChangePageIndex,
+    }),
+    [onChangePageIndex, onChangePageSize, pagination, props.pageSizeOptions]
+  );
+  const columnVisibility = useMemo(
+    () => ({ visibleColumns, setVisibleColumns: onChangeVisibleColumns }),
+    [onChangeVisibleColumns, visibleColumns]
+  );
+  const sorting = useMemo(() => ({ columns: sortingColumns, onSort }), [onSort, sortingColumns]);
+
   return (
     <InspectButtonContainer>
       <section style={{ width: '100%' }} data-test-subj={props['data-test-subj']}>
@@ -472,20 +487,15 @@ const AlertsTable: React.FunctionComponent<AlertsTableProps> = (props: AlertsTab
             aria-label="Alerts table"
             data-test-subj="alertsTable"
             columns={columnsWithCellActions}
-            columnVisibility={{ visibleColumns, setVisibleColumns: onChangeVisibleColumns }}
+            columnVisibility={columnVisibility}
             trailingControlColumns={props.trailingControlColumns}
             leadingControlColumns={leadingControlColumns}
             rowCount={alertsCount}
             renderCellValue={handleRenderCellValue}
             gridStyle={actualGridStyle}
-            sorting={{ columns: sortingColumns, onSort }}
+            sorting={sorting}
             toolbarVisibility={toolbarVisibility}
-            pagination={{
-              ...pagination,
-              pageSizeOptions: props.pageSizeOptions,
-              onChangeItemsPerPage: onChangePageSize,
-              onChangePage: onChangePageIndex,
-            }}
+            pagination={paginationConfiguration}
             rowHeightsOptions={props.rowHeightsOptions}
             onColumnResize={onColumnResize}
             ref={dataGridRef}
