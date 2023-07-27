@@ -44,117 +44,123 @@ type Props = EuiDataGridCellValueElementProps & {
   refetch?: () => void;
 };
 
-const RowActionComponent = ({
-  columnHeaders,
-  controlColumn,
-  data,
-  disabled,
-  index,
-  isEventViewer,
-  loadingEventIds,
-  onRowSelected,
-  onRuleChange,
-  pageRowIndex,
-  rowIndex,
-  selectedEventIds,
-  showCheckboxes,
-  tabType,
-  tableId,
-  setEventsLoading,
-  setEventsDeleted,
-  width,
-  refetch,
-}: Props) => {
-  const { data: timelineNonEcsData, ecs: ecsData, _id: eventId, _index: indexName } = data ?? {};
+const RowActionComponent = React.memo(
+  ({
+    columnHeaders,
+    controlColumn,
+    data,
+    disabled,
+    index,
+    isEventViewer,
+    loadingEventIds,
+    onRowSelected,
+    onRuleChange,
+    pageRowIndex,
+    rowIndex,
+    selectedEventIds,
+    showCheckboxes,
+    tabType,
+    tableId,
+    setEventsLoading,
+    setEventsDeleted,
+    width,
+    refetch,
+  }: Props) => {
+    const { data: timelineNonEcsData, ecs: ecsData, _id: eventId, _index: indexName } = data ?? {};
 
-  const { openFlyout } = useExpandableFlyoutContext();
+    const { openFlyout } = useExpandableFlyoutContext();
 
-  const dispatch = useDispatch();
-  const isSecurityFlyoutEnabled = useIsExperimentalFeatureEnabled('securityFlyoutEnabled');
+    const dispatch = useDispatch();
+    const isSecurityFlyoutEnabled = useIsExperimentalFeatureEnabled('securityFlyoutEnabled');
 
-  const columnValues = useMemo(
-    () =>
-      timelineNonEcsData &&
-      columnHeaders
-        .map(
-          (header) =>
-            getMappedNonEcsValue({
-              data: timelineNonEcsData,
-              fieldName: header.id,
-            }) ?? []
-        )
-        .join(' '),
-    [columnHeaders, timelineNonEcsData]
-  );
+    const isChecked = useMemo(
+      () => Object.keys(selectedEventIds).includes(eventId),
+      [eventId, selectedEventIds]
+    );
+    const columnValues = useMemo(
+      () =>
+        timelineNonEcsData &&
+        columnHeaders
+          .map(
+            (header) =>
+              getMappedNonEcsValue({
+                data: timelineNonEcsData,
+                fieldName: header.id,
+              }) ?? []
+          )
+          .join(' '),
+      [columnHeaders, timelineNonEcsData]
+    );
 
-  const handleOnEventDetailPanelOpened = useCallback(() => {
-    const updatedExpandedDetail: ExpandedDetailType = {
-      panelView: 'eventDetail',
-      params: {
-        eventId: eventId ?? '',
-        indexName: indexName ?? '',
-      },
-    };
-
-    if (isSecurityFlyoutEnabled) {
-      openFlyout({
-        right: {
-          id: RightPanelKey,
-          params: {
-            id: eventId,
-            indexName,
-            scopeId: tableId,
-          },
+    const handleOnEventDetailPanelOpened = useCallback(() => {
+      const updatedExpandedDetail: ExpandedDetailType = {
+        panelView: 'eventDetail',
+        params: {
+          eventId: eventId ?? '',
+          indexName: indexName ?? '',
         },
-      });
-    } else {
-      dispatch(
-        dataTableActions.toggleDetailPanel({
-          ...updatedExpandedDetail,
-          tabType,
-          id: tableId,
-        })
-      );
+      };
+
+      if (isSecurityFlyoutEnabled) {
+        openFlyout({
+          right: {
+            id: RightPanelKey,
+            params: {
+              id: eventId,
+              indexName,
+              scopeId: tableId,
+            },
+          },
+        });
+      } else {
+        dispatch(
+          dataTableActions.toggleDetailPanel({
+            ...updatedExpandedDetail,
+            tabType,
+            id: tableId,
+          })
+        );
+      }
+    }, [dispatch, eventId, indexName, isSecurityFlyoutEnabled, openFlyout, tabType, tableId]);
+
+    const Action = useMemo(() => controlColumn.rowCellRender, [controlColumn.rowCellRender]);
+
+    if (!timelineNonEcsData || !ecsData || !eventId) {
+      return <span data-test-subj="noData" />;
     }
-  }, [dispatch, eventId, indexName, isSecurityFlyoutEnabled, openFlyout, tabType, tableId]);
 
-  const Action = controlColumn.rowCellRender;
-
-  if (!timelineNonEcsData || !ecsData || !eventId) {
-    return <span data-test-subj="noData" />;
+    return (
+      <>
+        {Action && (
+          <Action
+            ariaRowindex={pageRowIndex + 1}
+            checked={isChecked}
+            columnId={controlColumn.id || ''}
+            columnValues={columnValues || ''}
+            data={timelineNonEcsData}
+            data-test-subj="actions"
+            disabled={disabled}
+            ecsData={ecsData}
+            eventId={eventId}
+            index={index}
+            isEventViewer={isEventViewer}
+            loadingEventIds={loadingEventIds}
+            onEventDetailsPanelOpened={handleOnEventDetailPanelOpened}
+            onRowSelected={onRowSelected}
+            onRuleChange={onRuleChange}
+            rowIndex={rowIndex}
+            showCheckboxes={showCheckboxes}
+            tabType={tabType}
+            timelineId={tableId}
+            width={width}
+            setEventsLoading={setEventsLoading}
+            setEventsDeleted={setEventsDeleted}
+            refetch={refetch}
+          />
+        )}
+      </>
+    );
   }
-
-  return (
-    <>
-      {Action && (
-        <Action
-          ariaRowindex={pageRowIndex + 1}
-          checked={Object.keys(selectedEventIds).includes(eventId)}
-          columnId={controlColumn.id || ''}
-          columnValues={columnValues || ''}
-          data={timelineNonEcsData}
-          data-test-subj="actions"
-          disabled={disabled}
-          ecsData={ecsData}
-          eventId={eventId}
-          index={index}
-          isEventViewer={isEventViewer}
-          loadingEventIds={loadingEventIds}
-          onEventDetailsPanelOpened={handleOnEventDetailPanelOpened}
-          onRowSelected={onRowSelected}
-          onRuleChange={onRuleChange}
-          rowIndex={rowIndex}
-          showCheckboxes={showCheckboxes}
-          tabType={tabType}
-          timelineId={tableId}
-          width={width}
-          setEventsLoading={setEventsLoading}
-          setEventsDeleted={setEventsDeleted}
-          refetch={refetch}
-        />
-      )}
-    </>
-  );
-};
+);
 
 export const RowAction = React.memo(RowActionComponent);

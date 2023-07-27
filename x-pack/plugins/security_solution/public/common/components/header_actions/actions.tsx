@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useDispatch } from 'react-redux';
 import { EuiButtonIcon, EuiCheckbox, EuiLoadingSpinner, EuiToolTip } from '@elastic/eui';
 import styled from 'styled-components';
@@ -46,26 +46,44 @@ const ActionsContainer = styled.div`
   display: flex;
 `;
 
-const ActionsComponent: React.FC<ActionProps> = ({
-  ariaRowindex,
-  checked,
-  columnValues,
-  ecsData,
-  eventId,
-  eventIdToNoteIds,
-  isEventPinned = false,
-  isEventViewer = false,
-  loadingEventIds,
-  onEventDetailsPanelOpened,
-  onRowSelected,
-  onRuleChange,
-  showCheckboxes,
-  showNotes,
-  timelineId,
-  toggleShowNotes,
-  refetch,
-  setEventsLoading,
-}) => {
+const ActionsComponent: React.FC<ActionProps> = (props) => {
+  console.log("ACTIONS COMPONENT IS RENDERING");
+  const {
+    ariaRowindex,
+    checked,
+    columnValues,
+    ecsData,
+    eventId,
+    eventIdToNoteIds,
+    isEventPinned = false,
+    isEventViewer = false,
+    loadingEventIds,
+    onEventDetailsPanelOpened,
+    onRowSelected,
+    onRuleChange,
+    showCheckboxes,
+    showNotes,
+    timelineId,
+    toggleShowNotes,
+    refetch,
+    setEventsLoading,
+  } = props;
+
+  const oldProps = useRef<ActionProps | null>(null);
+
+  useEffect(() => {
+    if (oldProps.current !== null) {
+      console.log("PROPS: oldProps.current !== null");
+      Object.keys(oldProps.current).forEach((key) => {
+        console.log("TRAVERSING KEYS");
+        if (oldProps.current[key] !== props[key]) {
+          console.log(`PROPS: props.${key} changed`);
+        }
+      });
+    }
+    oldProps.current = props;
+  }, [props]);
+
   const dispatch = useDispatch();
   const tGridEnabled = useIsExperimentalFeatureEnabled('tGridEnabled');
   const emptyNotes: string[] = [];

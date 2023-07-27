@@ -13,6 +13,7 @@ import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { Storage } from '@kbn/kibana-utils-plugin/public';
 import type { AlertsTableStateProps } from '@kbn/triggers-actions-ui-plugin/public/application/sections/alerts_table/alerts_table_state';
 import type { Alert } from '@kbn/triggers-actions-ui-plugin/public/types';
+import type { AlertConsumers } from '@kbn/rule-data-utils';
 import { ALERT_BUILDING_BLOCK_TYPE } from '@kbn/rule-data-utils';
 import styled from 'styled-components';
 import { useDispatch } from 'react-redux';
@@ -55,7 +56,7 @@ const { updateIsLoading, updateTotalCount } = dataTableActions;
 const shouldHighlightRow = (alert: Alert) => !!alert[ALERT_BUILDING_BLOCK_TYPE];
 
 const storage = new Storage(localStorage);
-
+const featureIds: AlertConsumers[] = ['siem'];
 interface GridContainerProps {
   hideLastPage: boolean;
 }
@@ -210,9 +211,18 @@ export const AlertsTableComponent: FC<DetectionEngineAlertTableProps> = ({
     return undefined;
   }, [isEventRenderedView]);
 
-  const dataTableStorage = getDataTablesInStorageByIds(storage, [TableId.alertsOnAlertsPage]);
-  const columnsFormStorage = dataTableStorage?.[TableId.alertsOnAlertsPage]?.columns ?? [];
-  const alertColumns = columnsFormStorage.length ? columnsFormStorage : getColumns(license);
+  const dataTableStorage = useMemo(
+    () => getDataTablesInStorageByIds(storage, [TableId.alertsOnAlertsPage]),
+    []
+  );
+  const columnsFormStorage = useMemo(
+    () => dataTableStorage?.[TableId.alertsOnAlertsPage]?.columns ?? [],
+    [dataTableStorage]
+  );
+  const alertColumns = useMemo(
+    () => (columnsFormStorage.length ? columnsFormStorage : getColumns(license)),
+    [columnsFormStorage, license]
+  );
 
   const finalBrowserFields = useMemo(
     () => (isEventRenderedView ? {} : browserFields),
@@ -222,6 +232,14 @@ export const AlertsTableComponent: FC<DetectionEngineAlertTableProps> = ({
   const finalColumns = useMemo(
     () => (isEventRenderedView ? eventRenderedViewColumns : alertColumns),
     [alertColumns, isEventRenderedView]
+  );
+
+  const toolbarVisibility = useMemo(
+    () => ({
+      showColumnSelector: !isEventRenderedView,
+      showSortSelector: !isEventRenderedView,
+    }),
+    [isEventRenderedView]
   );
 
   const onAlertTableUpdate: AlertsTableStateProps['onUpdate'] = useCallback(
@@ -260,7 +278,7 @@ export const AlertsTableComponent: FC<DetectionEngineAlertTableProps> = ({
       // stores saperate configuration based on the view of the table
       id: `detection-engine-alert-table-${configId}-${tableView}`,
       flyoutSize,
-      featureIds: ['siem'],
+      featureIds,
       query: finalBoolQuery,
       showExpandToDetails: false,
       gridStyle,
@@ -270,10 +288,7 @@ export const AlertsTableComponent: FC<DetectionEngineAlertTableProps> = ({
       browserFields: finalBrowserFields,
       onUpdate: onAlertTableUpdate,
       runtimeMappings,
-      toolbarVisibility: {
-        showColumnSelector: !isEventRenderedView,
-        showSortSelector: !isEventRenderedView,
-      },
+      toolbarVisibility,
     }),
     [
       triggersActionsUi.alertsTableConfigurationRegistry,
@@ -287,7 +302,7 @@ export const AlertsTableComponent: FC<DetectionEngineAlertTableProps> = ({
       finalBrowserFields,
       onAlertTableUpdate,
       runtimeMappings,
-      isEventRenderedView,
+      toolbarVisibility,
     ]
   );
 
@@ -305,10 +320,9 @@ export const AlertsTableComponent: FC<DetectionEngineAlertTableProps> = ({
     );
   }, [dispatch, tableId, finalColumns, isDataTableInitialized]);
 
-  const AlertTable = useMemo(
-    () => triggersActionsUi.getAlertsStateTable(alertStateProps),
-    [alertStateProps, triggersActionsUi]
-  );
+  const AlertTable = useMemo(() => {
+    return triggersActionsUi.getAlertsStateTable(alertStateProps);
+  }, [alertStateProps, triggersActionsUi]);
 
   const { Navigation } = useSessionViewNavigation({
     scopeId: tableId,

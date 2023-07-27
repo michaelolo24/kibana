@@ -338,13 +338,9 @@ const AlertsTable: React.FunctionComponent<AlertsTableProps> = (props: AlertsTab
       const idx = _props.rowIndex - pagination.pageSize * pagination.pageIndex;
       const alert = alerts[idx];
       // ecsAlert is needed for security solution
-      const ecsAlert = ecsAlertsData[idx];
+      const ecsData = ecsAlertsData[idx];
       if (alert) {
-        const data: Array<{ field: string; value: string[] }> = [];
-        Object.entries(alert ?? {}).forEach(([key, value]) => {
-          data.push({ field: key, value: value as string[] });
-        });
-
+        const data = oldAlertsData[idx];
         if (isSystemCell(_props.columnId)) {
           return (
             <SystemCellFactory
@@ -361,7 +357,7 @@ const AlertsTable: React.FunctionComponent<AlertsTableProps> = (props: AlertsTab
         return renderCellValue({
           ..._props,
           data,
-          ecsData: ecsAlert,
+          ecsData,
         });
       } else if (isLoading) {
         return <EuiSkeletonText lines={1} />;
@@ -369,16 +365,17 @@ const AlertsTable: React.FunctionComponent<AlertsTableProps> = (props: AlertsTab
       return null;
     },
     [
+      pagination.pageSize,
+      pagination.pageIndex,
       alerts,
       ecsAlertsData,
-      cases,
-      maintenanceWindows,
       isLoading,
+      oldAlertsData,
+      renderCellValue,
       isLoadingCases,
       isLoadingMaintenanceWindows,
-      pagination.pageIndex,
-      pagination.pageSize,
-      renderCellValue,
+      cases,
+      maintenanceWindows,
       showAlertStatusWithFlapping,
     ]
   );
