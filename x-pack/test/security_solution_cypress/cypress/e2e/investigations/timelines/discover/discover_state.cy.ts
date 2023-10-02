@@ -36,7 +36,6 @@ const DEFAULT_ESQL_QUERY =
 describe(
   'Discover State',
   {
-    env: { ftrConfig: { enableExperimental: ['discoverInTimeline'] } },
     tags: ['@ess'],
   },
   () => {

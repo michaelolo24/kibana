@@ -44,7 +44,7 @@ export class SecuritySolutionServerlessPlugin
     const { securitySolution } = setupDeps;
     securitySolution.setAppLinksSwitcher(projectAppLinksSwitcher);
     securitySolution.setDataQualityPanelConfig({ isILMAvailable: false });
-
+    securitySolution.setTimelineConfig({ esqlEnabled: false });
     return {};
   }
 

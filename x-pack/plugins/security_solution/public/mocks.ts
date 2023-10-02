@@ -19,12 +19,14 @@ export const contractStartServicesMock: ContractStartServices = {
   getComponent$: jest.fn(),
   upselling,
   dataQualityPanelConfig: undefined,
+  timelineConfig: undefined,
 };
 
 const setupMock = (): PluginSetup => ({
   resolver: jest.fn(),
   setAppLinksSwitcher: jest.fn(),
   setDataQualityPanelConfig: jest.fn(),
+  setTimelineConfig: jest.fn(),
 });
 
 const startMock = (): PluginStart => ({

@@ -8,3 +8,7 @@
 export interface DataQualityPanelConfig {
   isILMAvailable: boolean;
 }
+
+export interface TimelineConfig {
+  esqlEnabled: boolean;
+}

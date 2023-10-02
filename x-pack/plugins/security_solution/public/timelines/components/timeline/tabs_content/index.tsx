@@ -15,8 +15,9 @@ import { useDispatch } from 'react-redux';
 import styled from 'styled-components';
 
 import { FormattedMessage } from '@kbn/i18n-react';
+import { useKibana } from '../../../../common/lib/kibana';
+import type { TimelineConfig } from '../../../../overview/types';
 import { useAssistantTelemetry } from '../../../../assistant/use_assistant_telemetry';
-import { useIsExperimentalFeatureEnabled } from '../../../../common/hooks/use_experimental_features';
 import { useConversationStore } from '../../../../assistant/use_conversation_store';
 import { useAssistantAvailability } from '../../../../assistant/use_assistant_availability';
 import type { SessionViewConfig } from '../../../../../common/types';
@@ -46,6 +47,8 @@ import { useLicense } from '../../../../common/hooks/use_license';
 import { TIMELINE_CONVERSATION_TITLE } from '../../../../assistant/content/conversations/translations';
 import { initializeTimelineSettings } from '../../../store/timeline/actions';
 import { DISCOVER_ESQL_IN_TIMELINE_TECHNICAL_PREVIEW } from './translations';
+
+const defaultTimelineConfig: TimelineConfig = { esqlEnabled: true };
 
 const HideShowContainer = styled.div.attrs<{ $isVisible: boolean; isOverflowYScroll: boolean }>(
   ({ $isVisible = false, isOverflowYScroll = false }) => ({
@@ -134,7 +137,8 @@ const ActiveTimelineTab = memo<ActiveTimelineTabProps>(
     setConversationId,
     showTimeline,
   }) => {
-    const isDiscoverInTimelineEnabled = useIsExperimentalFeatureEnabled('discoverInTimeline');
+    const { timelineConfig = defaultTimelineConfig } = useKibana().services;
+    const { esqlEnabled } = timelineConfig;
     const { hasAssistantPrivilege } = useAssistantAvailability();
     const getTab = useCallback(
       (tab: TimelineTabs) => {
@@ -231,7 +235,7 @@ const ActiveTimelineTab = memo<ActiveTimelineTabProps>(
             )}
           </HideShowContainer>
         )}
-        {isDiscoverInTimelineEnabled && (
+        {esqlEnabled && (
           <HideShowContainer
             $isVisible={TimelineTabs.discover === activeTimelineTab}
             data-test-subj={`timeline-tab-content-${TimelineTabs.discover}`}
@@ -286,7 +290,8 @@ const TabsContentComponent: React.FC<BasicTimelineTab> = ({
   sessionViewConfig,
   timelineDescription,
 }) => {
-  const isDiscoverInTimelineEnabled = useIsExperimentalFeatureEnabled('discoverInTimeline');
+  const { timelineConfig = defaultTimelineConfig } = useKibana().services;
+  const { esqlEnabled } = timelineConfig;
   const { hasAssistantPrivilege } = useAssistantAvailability();
   const dispatch = useDispatch();
   const getActiveTab = useMemo(() => getActiveTabSelector(), []);
@@ -400,7 +405,7 @@ const TabsContentComponent: React.FC<BasicTimelineTab> = ({
             <span>{i18n.QUERY_TAB}</span>
             {showTimeline && <TimelineEventsCountBadge />}
           </StyledEuiTab>
-          {isDiscoverInTimelineEnabled && (
+          {esqlEnabled && (
             <StyledEuiTab
               data-test-subj={`timelineTabs-${TimelineTabs.discover}`}
               onClick={setDiscoverAsActiveTab}
