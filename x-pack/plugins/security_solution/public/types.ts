@@ -79,7 +79,7 @@ import type { TelemetryClientStart } from './common/lib/telemetry';
 import type { Dashboards } from './dashboards';
 import type { BreadcrumbsNav } from './common/breadcrumbs/types';
 import type { TopValuesPopoverService } from './app/components/top_values_popover/top_values_popover_service';
-import type { DataQualityPanelConfig } from './overview/types';
+import type { DataQualityPanelConfig, TimelineConfig } from './overview/types';
 import type { SetComponents, GetComponent$ } from './contract_components';
 
 export interface SetupPlugins {
@@ -149,6 +149,7 @@ export interface ContractStartServices {
   getComponent$: GetComponent$;
   upselling: UpsellingService;
   dataQualityPanelConfig: DataQualityPanelConfig | undefined;
+  timelineConfig: TimelineConfig | undefined;
 }
 
 export type StartServices = CoreStart &
@@ -178,6 +179,7 @@ export interface PluginSetup {
   resolver: () => Promise<ResolverPluginSetup>;
   setAppLinksSwitcher: (appLinksSwitcher: AppLinksSwitcher) => void;
   setDataQualityPanelConfig: (dataQualityPanelConfig: DataQualityPanelConfig) => void;
+  setTimelineConfig: (timelineConfig: TimelineConfig) => void;
 }
 
 export interface PluginStart {

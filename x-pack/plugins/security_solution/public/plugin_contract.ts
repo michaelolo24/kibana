@@ -9,7 +9,7 @@ import { BehaviorSubject } from 'rxjs';
 import type { RouteProps } from 'react-router-dom';
 import { UpsellingService } from '@kbn/security-solution-upselling/service';
 import type { ContractStartServices, PluginSetup, PluginStart } from './types';
-import type { DataQualityPanelConfig } from './overview/types';
+import type { DataQualityPanelConfig, TimelineConfig } from './overview/types';
 import type { AppLinksSwitcher } from './common/links';
 import { navLinks$ } from './common/links/nav_links';
 import { breadcrumbsNav$ } from './common/breadcrumbs';
@@ -22,6 +22,7 @@ export class PluginContract {
   public extraRoutes$: BehaviorSubject<RouteProps[]>;
   public appLinksSwitcher: AppLinksSwitcher;
   public dataQualityPanelConfig?: DataQualityPanelConfig;
+  public timelineConfig?: TimelineConfig;
 
   constructor() {
     this.extraRoutes$ = new BehaviorSubject<RouteProps[]>([]);
@@ -38,6 +39,7 @@ export class PluginContract {
       getComponent$: this.componentsService.getComponent$.bind(this.componentsService),
       upselling: this.upsellingService,
       dataQualityPanelConfig: this.dataQualityPanelConfig,
+      timelineConfig: this.timelineConfig,
     };
   }
 
@@ -49,6 +51,9 @@ export class PluginContract {
       },
       setDataQualityPanelConfig: (dataQualityPanelConfig) => {
         this.dataQualityPanelConfig = dataQualityPanelConfig;
+      },
+      setTimelineConfig: (timelineConfig) => {
+        this.timelineConfig = timelineConfig;
       },
     };
   }

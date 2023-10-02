@@ -32,7 +32,7 @@ export class SecuritySolutionEssPlugin
   ): SecuritySolutionEssPluginSetup {
     const { securitySolution } = setupDeps;
     securitySolution.setDataQualityPanelConfig({ isILMAvailable: true });
-
+    securitySolution.setTimelineConfig({ esqlEnabled: true });
     return {};
   }
 

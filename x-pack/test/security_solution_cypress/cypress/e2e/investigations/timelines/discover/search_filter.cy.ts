@@ -37,7 +37,6 @@ const esqlQuery = 'from auditbeat-* | where ecs.version == "8.0.0"';
 describe(
   'Basic discover search and filter operations',
   {
-    env: { ftrConfig: { enableExperimental: ['discoverInTimeline'] } },
     tags: ['@ess'],
   },
   () => {
