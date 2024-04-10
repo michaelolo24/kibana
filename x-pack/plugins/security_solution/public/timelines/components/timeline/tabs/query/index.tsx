@@ -326,27 +326,43 @@ export const QueryTabContentComponent: React.FC<Props> = ({
 
   if (unifiedComponentsInTimelineEnabled) {
     return (
-      <UnifiedTimelineBody
-        header={header}
-        columns={augumentedColumnHeaders}
-        rowRenderers={rowRenderers}
-        timelineId={timelineId}
-        itemsPerPage={itemsPerPage}
-        itemsPerPageOptions={itemsPerPageOptions}
-        sort={sort}
-        events={events}
-        refetch={refetch}
-        dataLoadingState={dataLoadingState}
-        totalCount={isBlankTimeline ? 0 : totalCount}
-        onEventClosed={onEventClosed}
-        expandedDetail={expandedDetail}
-        showExpandedDetails={showExpandedDetails}
-        onChangePage={loadPage}
-        activeTab={activeTab}
-        updatedAt={refreshedAt}
-        isTextBasedQuery={false}
-        pageInfo={pageInfo}
-      />
+      <>
+        <UnifiedTimelineBody
+          header={header}
+          columns={augumentedColumnHeaders}
+          rowRenderers={rowRenderers}
+          timelineId={timelineId}
+          itemsPerPage={itemsPerPage}
+          itemsPerPageOptions={itemsPerPageOptions}
+          sort={sort}
+          events={events}
+          refetch={refetch}
+          dataLoadingState={dataLoadingState}
+          totalCount={isBlankTimeline ? 0 : totalCount}
+          onEventClosed={onEventClosed}
+          expandedDetail={expandedDetail}
+          showExpandedDetails={showExpandedDetails}
+          onChangePage={loadPage}
+          activeTab={activeTab}
+          updatedAt={refreshedAt}
+          isTextBasedQuery={false}
+          pageInfo={pageInfo}
+        />
+        {showExpandedDetails && (
+          <>
+            <VerticalRule />
+            <ScrollableFlexItem grow={1}>
+              <DetailsPanel
+                browserFields={browserFields}
+                handleOnPanelClosed={handleOnPanelClosed}
+                runtimeMappings={runtimeMappings}
+                tabType={TimelineTabs.query}
+                scopeId={timelineId}
+              />
+            </ScrollableFlexItem>
+          </>
+        )}
+      </>
     );
   }
 
