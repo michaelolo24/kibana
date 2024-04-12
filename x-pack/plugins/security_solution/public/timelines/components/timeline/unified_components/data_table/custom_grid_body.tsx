@@ -14,6 +14,7 @@ import React, { useMemo } from 'react';
 import styled from 'styled-components';
 import type { RowRenderer } from '../../../../../../common/types';
 import { useStatefulRowRenderer } from '../../body/events/stateful_row_renderer/use_stateful_row_renderer';
+import { useEventTypeRowStyling } from './use_event_type_row_styling';
 
 export type RenderCustomBodyProps = EuiDataGridCustomBodyProps & {
   rows: Array<DataTableRecord & TimelineItem> | undefined;
@@ -55,7 +56,12 @@ const CustomGridRow = styled.div.attrs<{
 `;
 
 /* below styles as per : https://eui.elastic.co/#/tabular-content/data-grid-advanced#custom-body-renderer */
-const CustomGridRowCellWrapper = styled.div.attrs({ className: 'rowCellWrapper', role: 'row' })`
+const CustomGridRowCellWrapper = styled.div.attrs<{
+  className?: string;
+}>((props) => ({
+  className: `rowCellWrapper ${props.className ?? ''}`,
+  role: 'row',
+}))`
   display: flex;
 `;
 
@@ -83,13 +89,14 @@ const RenderCustomSingleRow = (props: RenderCustomSingleRowProps) => {
         : {},
     [canShowRowRenderer]
   );
+  const eventTypeRowClassName = useEventTypeRowStyling(rowData.ecs);
 
   return (
     <CustomGridRow
       className={`${rowIndex % 2 === 0 ? 'euiDataGridRow--striped' : ''}`}
       key={rowIndex}
     >
-      <CustomGridRowCellWrapper>
+      <CustomGridRowCellWrapper className={eventTypeRowClassName}>
         {visibleColumns.map((column, colIndex) => {
           // Skip the row details cell - we'll render it manually outside of the flex wrapper
           if (column.id !== 'additional-row-details') {
