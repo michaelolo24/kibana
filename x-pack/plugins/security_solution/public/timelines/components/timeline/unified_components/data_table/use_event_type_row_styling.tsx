@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { getEventType, isEvenEqlSequence, isEventBuildingBlockType } from "../../body/helpers";
 
 export const useEventTypeRowStyling = (ecsData: TimelineItem['ecs']) => {
-    const eventType = getEventType(ecsData);
+    const eventType = useMemo(() => getEventType(ecsData), []);
     const eventTypeClassName = useMemo(
       () =>
         eventType === 'raw'
@@ -20,5 +20,5 @@ export const useEventTypeRowStyling = (ecsData: TimelineItem['ecs']) => {
       [ecsData]
     );
 
-    return useMemo(() => [eventTypeClassName, buildingBlockTypeClassName].join(' '), []);
+    return useMemo(() => `${eventTypeClassName} ${buildingBlockTypeClassName}`, []);
 }
