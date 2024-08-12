@@ -7,6 +7,7 @@
 
 import type { Filter } from '@kbn/es-query';
 import type { SavedSearch } from '@kbn/saved-search-plugin/common';
+import { DataGridDensity } from '@kbn/unified-data-table';
 import type { SessionViewConfig } from '../../../common/types';
 import type {
   EqlOptionsSelected,
@@ -144,6 +145,8 @@ export interface TimelineModel {
   sampleSize: number;
   /** the note id pending deletion */
   confirmingNoteId?: string | null;
+  /** Density configuration of the table */
+  density?: DataGridDensity;
 }
 
 export type SubsetTimelineModel = Readonly<

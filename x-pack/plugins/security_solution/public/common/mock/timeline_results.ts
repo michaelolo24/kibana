@@ -1934,6 +1934,7 @@ export const mockTimelineModel: TimelineModel = {
   savedSearch: null,
   isDataProviderVisible: false,
   sampleSize: 500,
+  density: undefined,
 };
 
 export const mockDataTableModel: DataTableModel = {
@@ -2124,6 +2125,7 @@ export const defaultTimelineProps: CreateTimelineProps = {
   notes: null,
   ruleNote: '# this is some markdown documentation',
   ruleAuthor: ['elastic'],
+  density: undefined,
 };
 
 export const mockTimelineDetails: TimelineEventsDetailsItem[] = [

@@ -451,6 +451,7 @@ describe('alert actions', () => {
             isDataProviderVisible: false,
             rowHeight: 3,
             sampleSize: 500,
+            density: undefined,
           },
           to: '2018-11-05T19:03:25.937Z',
           ruleNote: '# this is some markdown documentation',

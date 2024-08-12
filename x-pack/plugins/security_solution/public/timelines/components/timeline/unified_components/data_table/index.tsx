@@ -140,7 +140,7 @@ export const TimelineDataTableComponent: React.FC<DataTableProps> = memo(
 
     const showTimeCol = useMemo(() => !!dataView && !!dataView.timeFieldName, [dataView]);
 
-    const { rowHeight, sampleSize, excludedRowRendererIds } = useSelector((state: State) =>
+    const { rowHeight, sampleSize, density, excludedRowRendererIds } = useSelector((state: State) =>
       selectTimelineById(state, timelineId)
     );
 
@@ -355,6 +355,14 @@ export const TimelineDataTableComponent: React.FC<DataTableProps> = memo(
       return enabledRowRenderers.length > 0 ? trailingControlColumns : undefined;
     }, [enabledRowRenderers.length, trailingControlColumns]);
 
+
+    const onUpdateDensity = useCallback(
+      (density: DataGridDensity) => {
+        dispatch(timelineActions.updateDensity({ id: timelineId, density: density }));
+      },
+      [dispatch, timelineId]
+    );
+
     return (
       <StatefulEventContext.Provider value={activeStatefulEventContext}>
         <StyledTimelineUnifiedDataTable>
@@ -369,6 +377,9 @@ export const TimelineDataTableComponent: React.FC<DataTableProps> = memo(
             columns={columnIds}
             expandedDoc={expandedDoc}
             gridStyleOverride={tableStylesOverride}
+            showDensitySelector={true}
+            dataGridDensityState={density}
+            onUpdateDataGridDensity={onUpdateDensity}
             dataView={dataView}
             showColumnTokens={true}
             loadingState={dataLoadingState}

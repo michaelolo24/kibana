@@ -30,6 +30,7 @@ import type {
 } from '../../../common/types/timeline';
 import type { DataProviderType, RowRendererId } from '../../../common/api/timeline';
 import type { ResolveTimelineConfig } from '../components/open_timeline/types';
+import { DataGridDensity } from '@kbn/unified-data-table';
 
 const actionCreator = actionCreatorFactory('x-pack/security_solution/local/timeline');
 
@@ -307,4 +308,9 @@ export const updateSampleSize = actionCreator<{
 export const setConfirmingNoteId = actionCreator<{
   id: string;
   confirmingNoteId: string | null | undefined;
-}>('SET_CONFIRMING_NOTE_ID');
+}>('SET_CONFIRMIxwG_NOTE_ID');
+
+export const updateDensity = actionCreator<{
+  id: string;
+  density: DataGridDensity;
+}>('UPDATE_DENSITY');

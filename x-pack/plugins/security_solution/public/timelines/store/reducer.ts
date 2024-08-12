@@ -66,6 +66,7 @@ import {
   updateColumnWidth,
   setConfirmingNoteId,
   deleteNoteFromEvent,
+  updateDensity,
 } from './actions';
 
 import {
@@ -105,6 +106,7 @@ import {
   updateTimelinePerPageOptions,
   updateTimelineItemsPerPage,
   updateTimelineColumnWidth,
+
 } from './helpers';
 
 import type { TimelineState } from './types';
@@ -586,6 +588,16 @@ export const timelineReducer = reducerWithInitialState(initialTimelineState)
       [id]: {
         ...state.timelineById[id],
         rowHeight,
+      },
+    },
+  }))
+  .case(updateDensity, (state, { id, density }) => ({
+    ...state,
+    timelineById: {
+      ...state.timelineById,
+      [id]: {
+        ...state.timelineById[id],
+        density,
       },
     },
   }))
