@@ -8,6 +8,7 @@
 
 import { useCallback, useMemo } from 'react';
 import { useHistory } from 'react-router-dom';
+import { createKbnUrlStateStorage } from '@kbn/kibana-utils-plugin/public';
 import { REDUX_ID_FOR_MEMORY_STORAGE } from '../constants';
 import { useExpandableFlyoutContext } from '../context';
 import {
@@ -32,6 +33,18 @@ export type { ExpandableFlyoutApi };
 export const useExpandableFlyoutApi = () => {
   const dispatch = useDispatch();
   const history = useHistory();
+
+  const urlStorage = useMemo(
+    () =>
+      createKbnUrlStateStorage({
+        history,
+        useHash: false,
+        useHashQuery: false,
+      }),
+    [history]
+  );
+
+  const isKioskMode = urlStorage.get('expandableFlyoutKiosk') as boolean;
 
   const { urlKey } = useExpandableFlyoutContext();
   // if no urlKey is provided, we are in memory storage mode and use the reserved word 'memory'
@@ -65,10 +78,10 @@ export const useExpandableFlyoutApi = () => {
     [dispatch, id]
   );
 
-  const closeRightPanel = useCallback(
-    () => dispatch(closeRightPanelAction({ id })),
-    [dispatch, id]
-  );
+  const closeRightPanel = useCallback(() => {
+    if (isKioskMode) return;
+    dispatch(closeRightPanelAction({ id }));
+  }, [dispatch, id, isKioskMode]);
 
   const closeLeftPanel = useCallback(() => dispatch(closeLeftPanelAction({ id })), [dispatch, id]);
 
@@ -85,7 +98,10 @@ export const useExpandableFlyoutApi = () => {
     }
   }, [dispatch, id, history]);
 
-  const closePanels = useCallback(() => dispatch(closePanelsAction({ id })), [dispatch, id]);
+  const closePanels = useCallback(() => {
+    if (isKioskMode) return;
+    dispatch(closePanelsAction({ id }));
+  }, [dispatch, id, isKioskMode]);
 
   const api: ExpandableFlyoutApi = useMemo(
     () => ({

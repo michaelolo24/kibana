@@ -10,6 +10,8 @@ import React, { useMemo } from 'react';
 import type { Interpolation, Theme } from '@emotion/react';
 import { EuiFlyoutProps } from '@elastic/eui';
 import { EuiFlexGroup, EuiFlyout } from '@elastic/eui';
+import { useHistory } from 'react-router-dom';
+import { createKbnUrlStateStorage } from '@kbn/kibana-utils-plugin/public';
 import { useSectionSizes } from './hooks/use_sections_sizes';
 import { useWindowSize } from './hooks/use_window_size';
 import { useExpandableFlyoutState } from './hooks/use_expandable_flyout_state';
@@ -50,6 +52,19 @@ export const ExpandableFlyout: React.FC<ExpandableFlyoutProps> = ({
   ...flyoutProps
 }) => {
   const windowWidth = useWindowSize();
+  const history = useHistory();
+
+  const urlStorage = useMemo(
+    () =>
+      createKbnUrlStateStorage({
+        history,
+        useHash: false,
+        useHashQuery: false,
+      }),
+    [history]
+  );
+
+  const isKioskMode = urlStorage.get('expandableFlyoutKiosk') as boolean;
 
   const { left, right, preview } = useExpandableFlyoutState();
   const { closeFlyout } = useExpandableFlyoutApi();
@@ -84,6 +99,7 @@ export const ExpandableFlyout: React.FC<ExpandableFlyoutProps> = ({
     showRight,
     showLeft,
     showPreview,
+    isKioskMode,
   });
 
   const hideFlyout = !left && !right && !preview?.length;
@@ -97,6 +113,7 @@ export const ExpandableFlyout: React.FC<ExpandableFlyoutProps> = ({
       size={flyoutWidth}
       ownFocus={false}
       onClose={(e) => {
+        if (isKioskMode) return;
         closeFlyout();
         if (flyoutProps.onClose) {
           flyoutProps.onClose(e);

@@ -33,6 +33,10 @@ export interface UserSectionsSizesParams {
    * True if the preview section is visible, false otherwise
    */
   showPreview: boolean;
+  /**
+   * Whether the flyout is actively in kiosk mode
+   */
+  isKioskMode: boolean;
 }
 
 export interface UserSectionsSizesResult {
@@ -62,6 +66,7 @@ export const useSectionSizes = ({
   showRight,
   showLeft,
   showPreview,
+  isKioskMode,
 }: UserSectionsSizesParams): UserSectionsSizesResult => {
   let rightSectionWidth: number = 0;
   if (showRight) {
@@ -93,8 +98,10 @@ export const useSectionSizes = ({
     }
   }
 
-  const flyoutWidth: string =
-    showRight && showLeft ? `${rightSectionWidth + leftSectionWidth}px` : `${rightSectionWidth}px`;
+  const widthNumber: number =
+    showRight && showLeft ? rightSectionWidth + leftSectionWidth : rightSectionWidth;
+
+  const flyoutWidth: string = `${widthNumber}px`;
 
   // preview section's width should only be similar to the right section.
   // Though because the preview is rendered with an absolute position in the flyout, we calculate its left position instead of the width
@@ -105,9 +112,9 @@ export const useSectionSizes = ({
   }
 
   return {
-    rightSectionWidth,
+    rightSectionWidth: isKioskMode && !showLeft ? windowWidth : rightSectionWidth,
     leftSectionWidth,
-    flyoutWidth,
+    flyoutWidth: isKioskMode ? '100%' : flyoutWidth,
     previewSectionLeft,
   };
 };

@@ -5,10 +5,11 @@
  * 2.0.
  */
 
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { safeDecode } from '@kbn/rison';
 import { useSelector } from 'react-redux';
-
+import { useHistory } from 'react-router-dom';
+import { createKbnUrlStateStorage } from '@kbn/kibana-utils-plugin/public';
 import type { State } from '../../store';
 import { TimelineId, TimelineTabs } from '../../../../common/types';
 import { useInitializeUrlParam } from '../../utils/global_query_string';
@@ -23,6 +24,16 @@ export const useInitTimelineFromUrlParam = () => {
     'unifiedComponentsInTimelineDisabled'
   );
 
+  const history = useHistory();
+  const urlStorage = useMemo(
+    () =>
+      createKbnUrlStateStorage({
+        history,
+        useHash: false,
+        useHashQuery: false,
+      }),
+    [history]
+  );
   const isEsqlTabDisabled = useIsExperimentalFeatureEnabled('timelineEsqlTabDisabled');
 
   const queryTimelineById = useQueryTimelineById();
@@ -46,8 +57,26 @@ export const useInitTimelineFromUrlParam = () => {
           unifiedComponentsInTimelineDisabled,
         });
       }
+      const subscription = urlStorage.change$(URL_PARAM_KEY.timeline).subscribe((value) => {
+        if (value != null) {
+          queryTimelineById({
+            activeTimelineTab:
+              value.activeTab === TimelineTabs.esql && isEsqlTabDisabled
+                ? TimelineTabs.query
+                : value.activeTab,
+            duplicate: false,
+            graphEventId: value.graphEventId,
+            timelineId: value.id,
+            openTimeline: value.isOpen,
+            savedSearchId: value.savedSearchId,
+            unifiedComponentsInTimelineDisabled,
+          });
+        }
+      });
+
+      return subscription;
     },
-    [isEsqlTabDisabled, queryTimelineById, unifiedComponentsInTimelineDisabled]
+    [isEsqlTabDisabled, queryTimelineById, unifiedComponentsInTimelineDisabled, urlStorage]
   );
 
   useEffect(() => {

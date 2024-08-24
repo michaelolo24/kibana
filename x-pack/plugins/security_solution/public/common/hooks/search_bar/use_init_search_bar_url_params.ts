@@ -8,6 +8,8 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useCallback, useMemo } from 'react';
 import type { Filter, Query } from '@kbn/es-query';
+import { useHistory } from 'react-router-dom';
+import { createKbnUrlStateStorage } from '@kbn/kibana-utils-plugin/public';
 import { InputsModelId } from '../../store/inputs/constants';
 import { useKibana } from '../../lib/kibana';
 import { inputsSelectors } from '../../store';
@@ -15,7 +17,21 @@ import { inputsActions } from '../../store/inputs';
 import { useInitializeUrlParam } from '../../utils/global_query_string';
 import { URL_PARAM_KEY } from '../use_url_state';
 
+
+// TODO: Add type validation checks for the subscription values
+
 export const useInitSearchBarFromUrlParams = () => {
+  const history = useHistory();
+  const urlStorage = useMemo(
+    () =>
+      createKbnUrlStateStorage({
+        history,
+        useHash: false,
+        useHashQuery: false,
+      }),
+    [history]
+  );
+
   const dispatch = useDispatch();
   const { filterManager, savedQueries } = useKibana().services.data.query;
   const getGlobalFiltersQuerySelector = useMemo(
@@ -35,8 +51,20 @@ export const useInitSearchBarFromUrlParams = () => {
           })
         );
       }
+
+      const subscription = urlStorage.change$(URL_PARAM_KEY.appQuery).subscribe((value) => {
+        dispatch(
+          inputsActions.setFilterQuery({
+            id: InputsModelId.global,
+            query: value.query,
+            language: value.language,
+          })
+        );
+      });
+
+      return subscription;
     },
-    [dispatch]
+    [dispatch, urlStorage]
   );
 
   const onInitializeFiltersFromUrlParam = useCallback(
@@ -60,8 +88,20 @@ export const useInitSearchBarFromUrlParams = () => {
           })
         );
       }
+
+      const subscription = urlStorage.change$(URL_PARAM_KEY.filters).subscribe((value) => {
+        filterManager.setFilters(value);
+        dispatch(
+          inputsActions.setSearchBarFilter({
+            id: InputsModelId.global,
+            filters: value as Filter[],
+          })
+        );
+      });
+
+      return subscription;
     },
-    [filterManager, dispatch, filtersFromStore]
+    [filterManager, dispatch, filtersFromStore, urlStorage]
   );
 
   const onInitializeSavedQueryFromUrlParam = useCallback(
@@ -90,8 +130,37 @@ export const useInitSearchBarFromUrlParams = () => {
           );
         });
       }
+
+      const subscription = urlStorage.change$(URL_PARAM_KEY.savedQuery).subscribe((value) => {
+        if (value != null && value !== '') {
+          savedQueries.getSavedQuery(value as string).then((savedQueryData) => {
+            const filters = savedQueryData.attributes.filters || [];
+            const query = savedQueryData.attributes.query;
+
+            filterManager.setFilters(filters);
+            dispatch(
+              inputsActions.setSearchBarFilter({
+                id: InputsModelId.global,
+                filters,
+              })
+            );
+
+            dispatch(
+              inputsActions.setFilterQuery({
+                id: InputsModelId.global,
+                ...query,
+              })
+            );
+            dispatch(
+              inputsActions.setSavedQuery({ id: InputsModelId.global, savedQuery: savedQueryData })
+            );
+          });
+        }
+      });
+
+      return subscription;
     },
-    [dispatch, filterManager, savedQueries]
+    [dispatch, filterManager, savedQueries, urlStorage]
   );
 
   useInitializeUrlParam(URL_PARAM_KEY.appQuery, onInitializeAppQueryFromUrlParam);

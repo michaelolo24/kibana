@@ -6,10 +6,11 @@
  */
 
 import type { VFC } from 'react';
-import React, { memo } from 'react';
+import React, { memo, useCallback } from 'react';
 import { EuiButtonIcon, EuiCopy, EuiFlexGroup, EuiFlexItem, EuiToolTip } from '@elastic/eui';
 import { i18n } from '@kbn/i18n';
 import { NewChatByTitle } from '@kbn/elastic-assistant';
+import { useExpandableFlyoutApi } from '@kbn/expandable-flyout';
 import { useGetFlyoutLink } from '../hooks/use_get_flyout_link';
 import { useBasicDataFromDetailsData } from '../../shared/hooks/use_basic_data_from_details_data';
 import { useAssistant } from '../hooks/use_assistant';
@@ -25,6 +26,7 @@ import { SHARE_BUTTON_TEST_ID } from './test_ids';
  */
 export const HeaderActions: VFC = memo(() => {
   const { dataFormattedForFieldBrowser, eventId, indexName } = useDocumentDetailsContext();
+  const { closeFlyout } = useExpandableFlyoutApi();
   const { isAlert, timestamp } = useBasicDataFromDetailsData(dataFormattedForFieldBrowser);
 
   const alertDetailsLink = useGetFlyoutLink({
@@ -32,6 +34,11 @@ export const HeaderActions: VFC = memo(() => {
     indexName,
     timestamp,
   });
+
+  const enableKioskMode = useCallback(() => {
+    window.open(`${window.location.href}&expandableFlyoutKiosk=true`, undefined, 'popup');
+    closeFlyout();
+  }, [closeFlyout]);
 
   const showShareAlertButton = isAlert && alertDetailsLink;
 
@@ -85,6 +92,25 @@ export const HeaderActions: VFC = memo(() => {
           </EuiToolTip>
         </EuiFlexItem>
       )}
+      <EuiFlexItem grow={false}>
+        <EuiToolTip
+          content={i18n.translate('xpack.securitySolution.flyout.right.header.kioskModeTooltip', {
+            defaultMessage: 'Enable kiosk mode',
+          })}
+        >
+          <EuiButtonIcon
+            iconType={'layers'}
+            color={'text'}
+            aria-label={i18n.translate(
+              'xpack.securitySolution.flyout.right.header.kioskModeButton',
+              { defaultMessage: 'Kiosk Mode' }
+            )}
+            data-test-subj={SHARE_BUTTON_TEST_ID}
+            onClick={enableKioskMode}
+            onKeyDown={enableKioskMode}
+          />
+        </EuiToolTip>
+      </EuiFlexItem>
     </EuiFlexGroup>
   );
 });

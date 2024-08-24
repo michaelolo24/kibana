@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { difference, isEmpty, pickBy } from 'lodash/fp';
 import { useDispatch } from 'react-redux';
+import type { Subscription } from 'rxjs';
 import usePrevious from 'react-use/lib/usePrevious';
 import { encode } from '@kbn/rison';
 import { encodeQueryString, useGetInitialUrlParamValue, useReplaceUrlParams } from './helpers';
@@ -31,7 +32,7 @@ export const useInitializeUrlParam = <State extends {}>(
   /**
    * @param state Decoded URL param value.
    */
-  onInitialize: (state: State | null) => void,
+  onInitialize: (state: State | null) => Subscription | void,
   newUrlParamKey?: string
 ) => {
   const dispatch = useDispatch();
@@ -50,9 +51,10 @@ export const useInitializeUrlParam = <State extends {}>(
     );
 
     // execute consumer initialization
-    onInitialize(value as State);
+    const subscription = onInitialize(value as State);
 
     return () => {
+      if (subscription) subscription.unsubscribe();
       dispatch(globalUrlParamActions.deregisterUrlParam({ key }));
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- It must run only once when the application is initializing.

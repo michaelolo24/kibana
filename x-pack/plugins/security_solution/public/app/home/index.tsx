@@ -27,6 +27,7 @@ import { useSetupDetectionEngineHealthApi } from '../../detection_engine/rule_mo
 import { TopValuesPopover } from '../components/top_values_popover/top_values_popover';
 import { AssistantOverlay } from '../../assistant/overlay';
 import { useInitSourcerer } from '../../sourcerer/containers/use_init_sourcerer';
+import { useBroadcastChannel } from '../../common/hooks/use_broadcast_channel';
 
 interface HomePageProps {
   children: React.ReactNode;
@@ -36,6 +37,7 @@ const HomePageComponent: React.FC<HomePageProps> = ({ children }) => {
   const { pathname } = useLocation();
   useInitSourcerer(getScopeFromPath(pathname));
   useUrlState();
+  useBroadcastChannel();
   useUpdateBrowserTitle();
   useUpdateExecutionContext();
 
