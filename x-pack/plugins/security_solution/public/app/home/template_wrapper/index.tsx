@@ -6,6 +6,7 @@
  */
 
 import React, { type ReactNode, useMemo, useState, useCallback } from 'react';
+import { KibanaFloatingWindow } from '@kbn/floating-window';
 import styled from 'styled-components';
 import { EuiThemeProvider, useEuiTheme, type EuiThemeComputed } from '@elastic/eui';
 import { IS_DRAGGING_CLASS_NAME } from '@kbn/securitysolution-t-grid';
@@ -105,9 +106,17 @@ export const SecuritySolutionTemplateWrapper: React.FC<SecuritySolutionTemplateW
             >
               <ExpandableFlyoutProvider urlKey={isPreview ? undefined : URL_PARAM_KEY.flyout}>
                 {children}
-                <SecuritySolutionFlyout />
+                <KibanaFloatingWindow
+                  onCloseFloatingWindow={() => {}}
+                  width={400}
+                  height={400}
+                  left={200}
+                  top={200}
+                  title="My title"
+                >
+                  <SecuritySolutionFlyout />
+                </KibanaFloatingWindow>
               </ExpandableFlyoutProvider>
-
               {didMount && <AttackDiscoveryTour />}
             </KibanaPageTemplate.Section>
             {isTimelineBottomBarVisible && (

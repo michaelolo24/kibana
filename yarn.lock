@@ -5159,6 +5159,10 @@
   version "0.0.0"
   uid ""
 
+"@kbn/floating-window@link:packages/kbn-floating-window":
+  version "0.0.0"
+  uid ""
+
 "@kbn/flot-charts@link:packages/kbn-flot-charts":
   version "0.0.0"
   uid ""
