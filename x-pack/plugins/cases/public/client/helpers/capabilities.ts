@@ -7,7 +7,9 @@
 
 import type { CasesPermissions } from '../../../common';
 import {
+  CASES_ADD_COMMENT_CAPABILITY,
   CASES_CONNECTORS_CAPABILITY,
+  CASES_REOPEN_CASE_CAPABILITY,
   CASES_SETTINGS_CAPABILITY,
   CREATE_CASES_CAPABILITY,
   DELETE_CASES_CAPABILITY,
@@ -26,6 +28,8 @@ export const getUICapabilities = (
   const push = !!featureCapabilities?.[PUSH_CASES_CAPABILITY];
   const connectors = !!featureCapabilities?.[CASES_CONNECTORS_CAPABILITY];
   const settings = !!featureCapabilities?.[CASES_SETTINGS_CAPABILITY];
+  const reopen = !!featureCapabilities?.[CASES_REOPEN_CASE_CAPABILITY];
+  const addComment = !!featureCapabilities?.[CASES_ADD_COMMENT_CAPABILITY];
 
   const all = create && read && update && deletePriv && push && connectors && settings;
 
@@ -38,5 +42,7 @@ export const getUICapabilities = (
     push,
     connectors,
     settings,
+    reopen,
+    addComment
   };
 };

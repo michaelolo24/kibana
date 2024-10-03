@@ -17,6 +17,8 @@ export const noCasesPermissions = () =>
     push: false,
     connectors: false,
     settings: false,
+    reopen: false,
+    addComment: false,
   });
 
 export const readCasesPermissions = () =>
@@ -28,6 +30,8 @@ export const readCasesPermissions = () =>
     push: false,
     connectors: true,
     settings: false,
+    reopen: false,
+    addComment: false,
   });
 export const noCreateCasesPermissions = () => buildCasesPermissions({ create: false });
 export const noUpdateCasesPermissions = () => buildCasesPermissions({ update: false });
@@ -71,6 +75,8 @@ export const noCasesCapabilities = () =>
     push_cases: false,
     cases_connectors: false,
     cases_settings: false,
+    cases_reopen_case: false,
+    cases_add_comment: false,
   });
 export const readCasesCapabilities = () =>
   buildCasesCapabilities({
@@ -79,6 +85,8 @@ export const readCasesCapabilities = () =>
     delete_cases: false,
     push_cases: false,
     cases_settings: false,
+    cases_reopen_case: false,
+    cases_add_comment: false,
   });
 export const writeCasesCapabilities = () => {
   return buildCasesCapabilities({
@@ -95,5 +103,7 @@ export const buildCasesCapabilities = (overrides?: Partial<CasesCapabilities>) =
     push_cases: overrides?.push_cases ?? true,
     cases_connectors: overrides?.cases_connectors ?? true,
     cases_settings: overrides?.cases_settings ?? true,
+    cases_reopen_case: overrides?.cases_reopen_case ?? true,
+    cases_add_comment: overrides?.cases_add_comment ?? true,
   };
 };

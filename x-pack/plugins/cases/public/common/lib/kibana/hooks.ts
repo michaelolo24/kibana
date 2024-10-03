@@ -193,6 +193,8 @@ export const useApplicationCapabilities = (): UseApplicationCapabilities => {
         push: permissions.push,
         connectors: permissions.connectors,
         settings: permissions.settings,
+        reopen: permissions.reopen,
+        addComment: permissions.addComment
       },
       visualize: { crud: !!capabilities.visualize?.save, read: !!capabilities.visualize?.show },
       dashboard: {
@@ -215,6 +217,8 @@ export const useApplicationCapabilities = (): UseApplicationCapabilities => {
       permissions.push,
       permissions.connectors,
       permissions.settings,
+      permissions.reopen,
+      permissions.addComment,
     ]
   );
 };

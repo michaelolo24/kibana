@@ -18,6 +18,8 @@ import type { CasesFeatureParams } from './types';
 export const getCasesBaseKibanaSubFeatureIds = (): CasesSubFeatureId[] => [
   CasesSubFeatureId.deleteCases,
   CasesSubFeatureId.casesSettings,
+  CasesSubFeatureId.addComment,
+  CasesSubFeatureId.reopenCase,
 ];
 
 /**
@@ -95,8 +97,78 @@ export const getCasesSubFeaturesMap = ({
     ],
   };
 
+  const reopenCaseCasesSubFeature: SubFeatureConfig = {
+    name: i18n.translate(
+      'securitySolutionPackages.features.featureRegistry.reopenCaseCasesSubFeatureName',
+      {
+        defaultMessage: 'Re-open case',
+      }
+    ),
+    privilegeGroups: [
+      {
+        groupType: 'independent',
+        privileges: [
+          {
+            id: 'cases_reopen_case',
+            name: i18n.translate(
+              'securitySolutionPackages.features.featureRegistry.reopenCaseCasesSubFeatureDetails',
+              {
+                defaultMessage: 'Re-open closed cases',
+              }
+            ),
+            includeIn: 'all',
+            savedObject: {
+              all: [...savedObjects.files],
+              read: [...savedObjects.files],
+            },
+            cases: {
+              addComment: [APP_ID],
+            },
+            ui: uiCapabilities.reopen,
+          },
+        ],
+      },
+    ],
+  };
+
+  const addCommentCasesSubFeature: SubFeatureConfig = {
+    name: i18n.translate(
+      'securitySolutionPackages.features.featureRegistry.addCommentCasesSubFeatureName',
+      {
+        defaultMessage: 'Add comment',
+      }
+    ),
+    privilegeGroups: [
+      {
+        groupType: 'independent',
+        privileges: [
+          {
+            id: 'cases_add_comment',
+            name: i18n.translate(
+              'securitySolutionPackages.features.featureRegistry.addCommentCasesSubFeatureDetails',
+              {
+                defaultMessage: 'Add comment to a case',
+              }
+            ),
+            includeIn: 'all',
+            savedObject: {
+              all: [...savedObjects.files],
+              read: [...savedObjects.files],
+            },
+            cases: {
+              settings: [APP_ID],
+            },
+            ui: uiCapabilities.addComment,
+          },
+        ],
+      },
+    ],
+  };
+
   return new Map<CasesSubFeatureId, SubFeatureConfig>([
     [CasesSubFeatureId.deleteCases, deleteCasesSubFeature],
     [CasesSubFeatureId.casesSettings, casesSettingsCasesSubFeature],
+    [CasesSubFeatureId.addComment, addCommentCasesSubFeature],
+    [CasesSubFeatureId.reopenCase, reopenCaseCasesSubFeature],
   ]);
 };

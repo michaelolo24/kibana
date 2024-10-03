@@ -216,6 +216,26 @@ export interface FeatureKibanaPrivileges {
      * ```
      */
     settings?: readonly string[];
+    /**
+     * List of case owners which users should have settings access to when granted this privilege.
+     * @example
+     * ```ts
+     *  {
+     *    reopen: ['securitySolution']
+     *  }
+     * ```
+     */
+    reopen?: readonly string[];
+    /**
+     * List of case owners which users should have settings access to when granted this privilege.
+     * @example
+     * ```ts
+     *  {
+     *    addComment: ['securitySolution']
+     *  }
+     * ```
+     */
+    addComment?: readonly string[];
   };
 
   /**

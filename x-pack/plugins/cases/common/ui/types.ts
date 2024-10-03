@@ -15,6 +15,8 @@ import type {
 import type {
   CASES_CONNECTORS_CAPABILITY,
   CASES_SETTINGS_CAPABILITY,
+  CASES_ADD_COMMENT_CAPABILITY,
+  CASES_REOPEN_CASE_CAPABILITY,
   PUSH_CASES_CAPABILITY,
 } from '../constants';
 import type { SnakeToCamelCase } from '../types';
@@ -305,6 +307,8 @@ export interface CasesPermissions {
   push: boolean;
   connectors: boolean;
   settings: boolean;
+  reopen: boolean;
+  addComment: boolean;
 }
 
 export interface CasesCapabilities {
@@ -315,4 +319,6 @@ export interface CasesCapabilities {
   [PUSH_CASES_CAPABILITY]: boolean;
   [CASES_CONNECTORS_CAPABILITY]: boolean;
   [CASES_SETTINGS_CAPABILITY]: boolean;
+  [CASES_REOPEN_CASE_CAPABILITY]: boolean;
+  [CASES_ADD_COMMENT_CAPABILITY]: boolean;
 }
