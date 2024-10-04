@@ -5,8 +5,8 @@
  * 2.0.
  */
 
-export const GET_DATA_GRID_HEADER = (fieldName: string) => {
-  return `[data-test-subj="dataGridHeaderCell-${fieldName}"]`;
+export const GET_DATA_GRID_HEADER_ACTION_BUTTON = (fieldName: string) => {
+  return `[data-test-subj="dataGridHeaderCellActionButton-${fieldName}"]`;
 };
 
 export const DATA_GRID_FIELDS = {
