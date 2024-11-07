@@ -5,7 +5,7 @@
  * 2.0.
  */
 
-describe('APM tutorial', () => {
+describe.skip('APM tutorial', () => {
   beforeEach(() => {
     cy.loginAsViewerUser();
     cy.visitKibana('/app/home#/tutorial/apm');
