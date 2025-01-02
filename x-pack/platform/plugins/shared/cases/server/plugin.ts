@@ -47,6 +47,7 @@ import { registerCaseFileKinds } from './files';
 import type { ConfigType } from './config';
 import { registerConnectorTypes } from './connectors';
 import { registerSavedObjects } from './saved_object_types';
+import { CasesIncrementalIdService } from './services/incremental_id';
 
 export class CasePlugin
   implements
@@ -66,6 +67,7 @@ export class CasePlugin
   private persistableStateAttachmentTypeRegistry: PersistableStateAttachmentTypeRegistry;
   private externalReferenceAttachmentTypeRegistry: ExternalReferenceAttachmentTypeRegistry;
   private userProfileService: UserProfileService;
+  private casesIncrementalIdService?: CasesIncrementalIdService;
 
   constructor(private readonly initializerContext: PluginInitializerContext) {
     this.caseConfig = initializerContext.config.get<ConfigType>();
@@ -83,7 +85,7 @@ export class CasePlugin
         core
       )}] and plugins [${Object.keys(plugins)}]`
     );
-
+    this.casesIncrementalIdService = new CasesIncrementalIdService(plugins, this.logger);
     registerInternalAttachments(
       this.externalReferenceAttachmentTypeRegistry,
       this.persistableStateAttachmentTypeRegistry
@@ -184,9 +186,9 @@ export class CasePlugin
 
   public start(core: CoreStart, plugins: CasesServerStartDependencies): CasesServerStart {
     this.logger.debug(`Starting Case Workflow`);
-
     if (plugins.taskManager) {
       scheduleCasesTelemetryTask(plugins.taskManager, this.logger);
+      this.casesIncrementalIdService?.scheduleIncrementIdTask(plugins.taskManager, core);
     }
 
     this.userProfileService.initialize({

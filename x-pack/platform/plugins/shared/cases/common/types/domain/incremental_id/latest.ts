@@ -5,8 +5,4 @@
  * 2.0.
  */
 
-module.exports = {
-  preset: '@kbn/test',
-  rootDir: '../../../../..',
-  roots: ['<rootDir>/x-pack/solutions/security/packages/index-adapter'],
-};
+export * from './v1';
