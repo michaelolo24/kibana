@@ -45,17 +45,7 @@ import { selectTimelineById, selectTimelineESQLSavedSearchId } from '../../../st
 import { fetchNotesBySavedObjectIds, selectSortedNotesBySavedObjectId } from '../../../../notes';
 import { ENABLE_VISUALIZATIONS_IN_FLYOUT_SETTING } from '../../../../../common/constants';
 import { useUserPrivileges } from '../../../../common/components/user_privileges';
-
-const HideShowContainer = styled.div.attrs<{ $isVisible: boolean; isOverflowYScroll: boolean }>(
-  ({ $isVisible = false, isOverflowYScroll = false }) => ({
-    style: {
-      display: $isVisible ? 'flex' : 'none',
-      overflow: isOverflowYScroll ? 'hidden scroll' : 'hidden',
-    },
-  })
-)<{ $isVisible: boolean; isOverflowYScroll?: boolean }>`
-  flex: 1;
-`;
+import { OnDemandRenderer } from './on_demand_renderer';
 
 /**
  * A HOC which supplies React.Suspense with a fallback component
@@ -145,53 +135,58 @@ const ActiveTimelineTab = memo<ActiveTimelineTabProps>(
      */
     return (
       <>
-        <HideShowContainer
-          $isVisible={TimelineTabs.query === activeTimelineTab}
-          data-test-subj={`timeline-tab-content-${TimelineTabs.query}`}
+        <OnDemandRenderer
+          timelineId={timelineId}
+          shouldShowTab={TimelineTabs.query === activeTimelineTab}
+          dataTestSubj={`timeline-tab-content-${TimelineTabs.query}`}
         >
           <QueryTab
             renderCellValue={renderCellValue}
             rowRenderers={rowRenderers}
             timelineId={timelineId}
           />
-        </HideShowContainer>
+        </OnDemandRenderer>
         {showTimeline && shouldShowESQLTab && activeTimelineTab === TimelineTabs.esql && (
-          <HideShowContainer
-            $isVisible={true}
-            data-test-subj={`timeline-tab-content-${TimelineTabs.esql}`}
+          <OnDemandRenderer
+            timelineId={timelineId}
+            shouldShowTab={true}
+            dataTestSubj={`timeline-tab-content-${TimelineTabs.esql}`}
           >
             <EsqlTab timelineId={timelineId} />
-          </HideShowContainer>
+          </OnDemandRenderer>
         )}
-        <HideShowContainer
-          $isVisible={TimelineTabs.pinned === activeTimelineTab}
-          data-test-subj={`timeline-tab-content-${TimelineTabs.pinned}`}
+        <OnDemandRenderer
+          timelineId={timelineId}
+          shouldShowTab={TimelineTabs.pinned === activeTimelineTab}
+          dataTestSubj={`timeline-tab-content-${TimelineTabs.pinned}`}
         >
           <PinnedTab
             renderCellValue={renderCellValue}
             rowRenderers={rowRenderers}
             timelineId={timelineId}
           />
-        </HideShowContainer>
+        </OnDemandRenderer>
         {timelineType === TimelineTypeEnum.default && (
-          <HideShowContainer
-            $isVisible={TimelineTabs.eql === activeTimelineTab}
-            data-test-subj={`timeline-tab-content-${TimelineTabs.eql}`}
+          <OnDemandRenderer
+            timelineId={timelineId}
+            shouldShowTab={TimelineTabs.eql === activeTimelineTab}
+            dataTestSubj={`timeline-tab-content-${TimelineTabs.eql}`}
           >
             <EqlTab
               renderCellValue={renderCellValue}
               rowRenderers={rowRenderers}
               timelineId={timelineId}
             />
-          </HideShowContainer>
+          </OnDemandRenderer>
         )}
-        <HideShowContainer
-          $isVisible={isGraphOrNotesTabs}
+        <OnDemandRenderer
+          timelineId={timelineId}
+          shouldShowTab={isGraphOrNotesTabs}
           isOverflowYScroll={activeTimelineTab === TimelineTabs.session}
-          data-test-subj={`timeline-tab-content-${TimelineTabs.graph}-${TimelineTabs.notes}`}
+          dataTestSubj={`timeline-tab-content-${TimelineTabs.graph}-${TimelineTabs.notes}`}
         >
-          {isGraphOrNotesTabs && getTab(activeTimelineTab)}
-        </HideShowContainer>
+          {isGraphOrNotesTabs ? getTab(activeTimelineTab) : null}
+        </OnDemandRenderer>
       </>
     );
   }

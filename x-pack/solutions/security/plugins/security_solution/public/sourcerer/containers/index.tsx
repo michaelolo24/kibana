@@ -45,7 +45,6 @@ export const useSourcererDataView = (
   );
 
   const [legacyPatterns, setLegacyPatterns] = useState<string[]>([]);
-
   const [indexPatternsLoading, fetchIndexReturn] = useFetchIndex(legacyPatterns);
 
   const legacyDataView: Omit<SourcererDataView, 'id'> & { id: string | null } = useMemo(
@@ -67,10 +66,10 @@ export const useSourcererDataView = (
     if (selectedDataView == null || missingPatterns.length > 0) {
       // old way of fetching indices, legacy timeline
       setLegacyPatterns(selectedPatterns);
-    } else {
+    } else if (legacyPatterns.length > 0) {
       setLegacyPatterns([]);
     }
-  }, [missingPatterns, selectedDataView, selectedPatterns]);
+  }, [legacyPatterns.length, missingPatterns, selectedDataView, selectedPatterns]);
 
   const sourcererDataView = useMemo(() => {
     const _dv =
