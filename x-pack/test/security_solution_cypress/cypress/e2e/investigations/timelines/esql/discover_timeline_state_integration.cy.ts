@@ -171,7 +171,7 @@ describe(
       });
     });
 
-    describe.only('Discover saved search state for ESQL tab', () => {
+    describe('Discover saved search state for ESQL tab', () => {
       it('should save esql tab saved search with `Security Solution` tag', () => {
         const timelineSuffix = Date.now();
         const timelineName = `SavedObject timeline-${timelineSuffix}`;

@@ -69,7 +69,6 @@ describe('Timeline', () => {
       expect(screen.getByTestId(esqlTabSubj)).toBeVisible();
     });
 
-    // FLAKY: https://github.com/elastic/kibana/issues/194510
     describe('no existing esql query is present', () => {
       it('should not show the esql tab when the advanced setting is disabled', async () => {
         useEsqlAvailabilityMock.mockReturnValue({
