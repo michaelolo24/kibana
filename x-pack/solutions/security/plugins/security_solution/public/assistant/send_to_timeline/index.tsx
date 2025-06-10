@@ -67,7 +67,8 @@ export const SendToTimelineButton: FC<PropsWithChildren<SendToTimelineButtonProp
   const { dataViewId: oldTimelineDataViewId } = useSourcererDataView(SourcererScopeName.timeline);
   const newDataViewPickerEnabled = useIsExperimentalFeatureEnabled('newDataViewPickerEnabled');
 
-  const { dataViewSpec } = useDataViewSpec(SourcererScopeName.timeline);
+  // TODO: Just need the selected id here, not the whole spec
+  const { dataViewSpec } = useDataViewSpec(SourcererScopeName.timeline, false);
 
   const timelineDataViewId = newDataViewPickerEnabled
     ? dataViewSpec?.id ?? null

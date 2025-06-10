@@ -60,7 +60,8 @@ export const useCreateTimeline = ({
 
   const { newDataViewPickerEnabled } = useEnableExperimental();
   const { dataViewSpec: experimentalDataViewSpec } = useDataViewSpec(
-    DataViewManagerScopeName.default
+    DataViewManagerScopeName.default,
+    false
   );
   const experimentalSelectedPatterns = useSelectedPatterns(DataViewManagerScopeName.default);
 

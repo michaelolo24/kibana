@@ -18,6 +18,7 @@ import type { AppMountParameters } from '@kbn/core/public';
 import { EuiThemeProvider } from '@kbn/kibana-react-plugin/common';
 import { CellActionsProvider } from '@kbn/cell-actions';
 import { NavigationProvider } from '@kbn/security-solution-navigation';
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { UpsellingProvider } from '../common/components/upselling_provider';
 import { ManageUserInfo } from '../detections/components/user_info';
 import { APP_NAME } from '../../common/constants';
@@ -71,6 +72,7 @@ const StartAppComponent: FC<StartAppComponent> = ({ children, history, store, th
                           </DiscoverInTimelineContextProvider>
                         </UpsellingProvider>
                       </CellActionsProvider>
+                      <ReactQueryDevtools initialIsOpen={false} />
                     </ReactQueryClientProvider>
                   </NavigationProvider>
                 </ManageUserInfo>

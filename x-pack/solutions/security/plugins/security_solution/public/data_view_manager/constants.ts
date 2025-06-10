@@ -10,3 +10,10 @@ export const DEFAULT_SECURITY_SOLUTION_DATA_VIEW_ID = 'security-solution-default
 export { SourcererScopeName as DataViewManagerScopeName } from '../sourcerer/store/model';
 
 export const SLICE_PREFIX = 'x-pack/security_solution/dataViewManager' as const;
+
+const USE_DATA_VIEW_QUERY_KEY = 'USE_DATA_VIEW';
+
+export const getUseDataViewQueryKey = (dataViewId: string): string[] => [
+  USE_DATA_VIEW_QUERY_KEY,
+  dataViewId,
+];

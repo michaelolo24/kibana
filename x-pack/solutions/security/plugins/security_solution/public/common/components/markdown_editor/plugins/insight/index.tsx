@@ -37,6 +37,7 @@ import { FormattedMessage } from '@kbn/i18n-react';
 import type { Filter } from '@kbn/es-query';
 import { FilterStateStore } from '@kbn/es-query';
 import { useForm, FormProvider, useController } from 'react-hook-form';
+import { DataViewManagerScopeName } from '../../../../../data_view_manager/constants';
 import { useDataView } from '../../../../../data_view_manager/hooks/use_data_view';
 import { useIsExperimentalFeatureEnabled } from '../../../../hooks/use_experimental_features';
 import { useUpsellingMessage } from '../../../../hooks/use_upselling';
@@ -291,7 +292,8 @@ const InsightEditorComponent = ({
 
   const newDataViewPickerEnabled = useIsExperimentalFeatureEnabled('newDataViewPickerEnabled');
 
-  const { dataViewSpec } = useDataViewSpec();
+  // Only need the name
+  const { dataViewSpec } = useDataViewSpec(DataViewManagerScopeName.default, false);
   const sourcererDataView = newDataViewPickerEnabled ? dataViewSpec : oldSourcererDataView;
 
   const {

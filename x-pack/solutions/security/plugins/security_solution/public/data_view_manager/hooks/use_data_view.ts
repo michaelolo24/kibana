@@ -5,15 +5,32 @@
  * 2.0.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import type { DataViewsPublicPluginStart } from '@kbn/data-views-plugin/public';
 import { type DataView } from '@kbn/data-views-plugin/public';
-
+import { useQuery } from '@tanstack/react-query';
 import { useSelector } from 'react-redux';
 import { useKibana } from '../../common/lib/kibana';
-import { DataViewManagerScopeName } from '../constants';
+import { DataViewManagerScopeName, getUseDataViewQueryKey } from '../constants';
 import { useIsExperimentalFeatureEnabled } from '../../common/hooks/use_experimental_features';
 import { sourcererAdapterSelector } from '../redux/selectors';
 import type { SharedDataViewSelectionState } from '../redux/types';
+import { dataViewSpecCache } from './spec_cache';
+
+const getDataView = async (
+  dataViewId: string,
+  internalStatus: SharedDataViewSelectionState['status'],
+  dataViewsService: DataViewsPublicPluginStart
+) => {
+  if (!dataViewId || internalStatus !== 'ready') {
+    return undefined;
+  }
+
+  dataViewSpecCache.delete(dataViewId); // Clear cache to ensure we get the latest data view
+
+  const currDv = await dataViewsService?.get(dataViewId);
+  return currDv;
+};
 
 /*
  * This hook should be used whenever we need the actual DataView and not just the spec for the
@@ -21,7 +38,10 @@ import type { SharedDataViewSelectionState } from '../redux/types';
  */
 export const useDataView = (
   dataViewManagerScope: DataViewManagerScopeName = DataViewManagerScopeName.default
-): { dataView: DataView | undefined; status: SharedDataViewSelectionState['status'] } => {
+): {
+  dataView: DataView | undefined;
+  status: SharedDataViewSelectionState['status'];
+} => {
   const {
     services: { dataViews },
     notifications,
@@ -31,36 +51,41 @@ export const useDataView = (
     sourcererAdapterSelector(dataViewManagerScope)
   );
   const newDataViewPickerEnabled = useIsExperimentalFeatureEnabled('newDataViewPickerEnabled');
-  const [retrievedDataView, setRetrievedDataView] = useState<DataView | undefined>();
+  const queryFn = useCallback(
+    () => getDataView(dataViewId as string, internalStatus, dataViews),
+    [dataViewId, internalStatus, dataViews]
+  );
 
-  useEffect(() => {
-    (async () => {
-      if (!dataViewId || internalStatus !== 'ready') {
-        return setRetrievedDataView(undefined);
-      }
+  const queryKey = useMemo(() => {
+    if (!newDataViewPickerEnabled || !dataViewId) {
+      return undefined;
+    }
+    return getUseDataViewQueryKey(dataViewId);
+  }, [newDataViewPickerEnabled, dataViewId]);
 
-      try {
-        // TODO: remove conditional .get call when new data view picker is stabilized
-        // this is due to the fact that many of our tests mock kibana hook and do not provide proper
-        // double for dataViews service
-        const currDv = await dataViews?.get(dataViewId);
-        setRetrievedDataView(currDv);
-      } catch (error) {
-        setRetrievedDataView(undefined);
-        // TODO: (remove conditional call when feature flag is on (mocks are broken for some tests))
-        notifications?.toasts?.danger({
-          title: 'Error retrieving data view',
-          body: `Error: ${error?.message ?? 'unknown'}`,
-        });
-      }
-    })();
-  }, [dataViews, dataViewId, internalStatus, notifications]);
+  const { isError, data, error } = useQuery({
+    queryKey, // cast to string since this call is only made when dataViewId is defined
+    queryFn,
+    enabled: newDataViewPickerEnabled && !!dataViewId,
+    keepPreviousData: true,
+    placeholderData: undefined,
+    staleTime: Infinity,
+  });
+
+  if (isError) {
+    notifications?.toasts?.danger({
+      title: 'Error retrieving data view',
+      body: `Error: ${(error as Error)?.message ?? 'unknown'}`,
+    });
+  }
 
   return useMemo(() => {
     if (!newDataViewPickerEnabled) {
       return { dataView: undefined, status: internalStatus };
     }
-
-    return { dataView: retrievedDataView, status: retrievedDataView ? internalStatus : 'loading' };
-  }, [newDataViewPickerEnabled, retrievedDataView, internalStatus]);
+    return {
+      dataView: data,
+      status: data ? internalStatus : 'loading',
+    };
+  }, [newDataViewPickerEnabled, data, internalStatus]);
 };

@@ -18,6 +18,7 @@ import type { AppAction } from '../common/store/actions';
 import { ManageRoutesSpy } from '../common/utils/route/manage_spy_routes';
 import { NotFoundPage } from './404';
 import { HomePage } from './home';
+import { ReactQueryClientProvider } from '../common/containers/query_client/query_client_provider';
 
 interface RouterProps {
   children: React.ReactNode;
@@ -47,7 +48,9 @@ const PageRouterComponent: FC<RouterProps> = ({ children, history }) => {
           <Routes>
             <Route path="/">
               <CasesContext owner={[APP_ID]} permissions={userCasesPermissions}>
-                <HomePage>{children}</HomePage>
+                <ReactQueryClientProvider>
+                  <HomePage>{children}</HomePage>
+                </ReactQueryClientProvider>
               </CasesContext>
             </Route>
             <Route>
