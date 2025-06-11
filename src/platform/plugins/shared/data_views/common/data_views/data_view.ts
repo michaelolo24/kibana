@@ -64,6 +64,8 @@ export class DataView extends AbstractDataView implements DataViewBase {
 
   private etag: string | undefined;
 
+  private dataViewSpecCache: DataViewSpec | null = null;
+
   /**
    * constructor
    * @param config - config data and dependencies
@@ -145,6 +147,10 @@ export class DataView extends AbstractDataView implements DataViewBase {
    * will be fetched from Elasticsearch when instantiating a new Data View with this spec.
    */
   public toSpec(includeFields = true): DataViewSpec {
+    if (includeFields && this.dataViewSpecCache) {
+      return this.dataViewSpecCache;
+    }
+
     const spec = this.toSpecShared(includeFields);
     const fields =
       includeFields && this.fields
@@ -155,9 +161,21 @@ export class DataView extends AbstractDataView implements DataViewBase {
       spec.fields = fields;
     }
 
+    if (this.id && includeFields) {
+      this.dataViewSpecCache = spec;
+    }
+
     return spec;
   }
 
+  /**
+   * Clear instance in data view spec cache
+   */
+  clearDataViewSpecCache = () => {
+    if (this.dataViewSpecCache) {
+      this.dataViewSpecCache = null;
+    }
+  };
   /**
    * Creates a minimal static representation of the data view. Fields and popularity scores will be omitted.
    */
@@ -194,6 +212,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
    */
 
   removeScriptedField(fieldName: string) {
+    this.clearDataViewSpecCache();
     this.deleteScriptedFieldInternal(fieldName);
     const field = this.fields.getByName(fieldName);
     if (field && field.scripted) {
@@ -272,6 +291,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
       throw new CharacterNotAllowedInField('*', name);
     }
 
+    this.clearDataViewSpecCache();
     const { type, script, customLabel, customDescription, format, popularity } = runtimeField;
 
     if (type === 'composite') {
@@ -335,6 +355,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
    * @param name - Field name to remove
    */
   removeRuntimeField(name: string) {
+    this.clearDataViewSpecCache();
     const existingField = this.getFieldByName(name);
 
     if (existingField && existingField.isMapped) {
@@ -374,6 +395,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
    */
 
   public setFieldCustomLabel(fieldName: string, customLabel: string | undefined | null) {
+    this.clearDataViewSpecCache();
     const fieldObject = this.fields.getByName(fieldName);
     const newCustomLabel: string | undefined = customLabel === null ? undefined : customLabel;
 
@@ -394,6 +416,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
     fieldName: string,
     customDescription: string | undefined | null
   ) {
+    this.clearDataViewSpecCache();
     const fieldObject = this.fields.getByName(fieldName);
     const newCustomDescription: string | undefined =
       customDescription === null ? undefined : customDescription;
@@ -412,6 +435,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
    */
 
   public setFieldCount(fieldName: string, count: number | undefined | null) {
+    this.clearDataViewSpecCache();
     const fieldObject = this.fields.getByName(fieldName);
     const newCount: number | undefined = count === null ? undefined : count;
 
@@ -444,6 +468,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
       );
     }
 
+    this.clearDataViewSpecCache();
     // We first remove the runtime composite field with the same name which will remove all of its subFields.
     // This guarantees that we don't leave behind orphan data view fields
     this.removeRuntimeField(name);
@@ -479,6 +504,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
       );
     }
 
+    this.clearDataViewSpecCache();
     // Create the field if it does not exist or update an existing one
     let createdField: DataViewField | undefined;
     const existingField = this.getFieldByName(fieldName);
@@ -517,6 +543,7 @@ export class DataView extends AbstractDataView implements DataViewBase {
 
   upsertScriptedField = (field: FieldSpec) => {
     this.upsertScriptedFieldInternal(field);
+    this.clearDataViewSpecCache();
     const fieldExists = !!this.fields.getByName(field.name);
 
     if (fieldExists) {
