@@ -21,6 +21,7 @@ import { sharedDataViewManagerSlice } from '../redux/slices';
 import { useUserInfo } from '../../detections/components/user_info';
 import { type SelectDataViewAsyncPayload } from '../redux/actions';
 import { DataViewManagerScopeName } from '../constants';
+import { dataViewSpecCache } from '../utils/data_view_spec_cache';
 
 type OriginalListener = Parameters<typeof originalAddListener>[0];
 
@@ -105,6 +106,7 @@ export const useInitDataViewManager = () => {
       listeners.forEach((dataViewSelectedListener) => {
         dispatch(removeListener(dataViewSelectedListener));
       });
+      dataViewSpecCache.clear();
     };
   }, [
     dispatch,

@@ -23,6 +23,7 @@ import { useManagedDataViews } from '../../hooks/use_managed_data_views';
 import { useSavedDataViews } from '../../hooks/use_saved_data_views';
 import { DEFAULT_SECURITY_DATA_VIEW, LOADING } from './translations';
 import { DATA_VIEW_PICKER_TEST_ID } from './constants';
+import { dataViewSpecCache } from '../../utils/data_view_spec_cache';
 
 interface DataViewPickerProps {
   /**
@@ -49,7 +50,7 @@ export const DataViewPicker = memo(({ scope, onClosePopover, disabled }: DataVie
   const closeDataViewEditor = useRef<() => void | undefined>();
   const closeFieldEditor = useRef<() => void | undefined>();
 
-  const { dataViewSpec, status } = useDataViewSpec(scope);
+  const { dataViewSpec, status } = useDataViewSpec(scope, false);
 
   const { adhocDataViews: adhocDataViewSpecs, defaultDataViewId } =
     useSelector(sharedStateSelector);
@@ -69,6 +70,8 @@ export const DataViewPicker = memo(({ scope, onClosePopover, disabled }: DataVie
   // hence - it is the only place where we should update the url param for the data view selection.
   const handleChangeDataView = useCallback(
     (id: string, indexPattern: string = '') => {
+      // Update the dataViewSpec cache when re-selecting it.
+      dataViewSpecCache.delete(id);
       selectDataView({ id, scope });
 
       if (isDefaultSourcerer) {
@@ -131,6 +134,7 @@ export const DataViewPicker = memo(({ scope, onClosePopover, disabled }: DataVie
       if (!updatedDataView.id) {
         return;
       }
+      dataViewSpecCache.delete(updatedDataView.id);
       handleChangeDataView(updatedDataView.id, updatedDataView.getIndexPattern());
     },
     [handleChangeDataView]

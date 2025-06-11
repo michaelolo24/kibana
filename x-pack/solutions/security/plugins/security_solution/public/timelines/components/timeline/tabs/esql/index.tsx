@@ -84,6 +84,7 @@ export const DiscoverTabContent: FC<DiscoverTabContentProps> = ({ timelineId }) 
   // TODO: (DV_PICKER) should not be here, used to make discover container work I suppose
   useEffect(() => {
     if (!dataViewId) return;
+    // TODO: (DV_PICKER) we have the spec with the new data, we should not need to fetch it again
     dataViewService.get(dataViewId).then((dv) => setDataViewSpec(dv?.toSpec?.()));
   }, [dataViewId, dataViewService]);
 

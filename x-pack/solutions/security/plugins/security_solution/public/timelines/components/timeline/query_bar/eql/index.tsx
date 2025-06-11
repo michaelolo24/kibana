@@ -182,6 +182,7 @@ export const EqlQueryBarTimeline = memo(({ timelineId }: { timelineId: string })
     () => ({
       ...dataViewSpec,
       title: dataViewSpec.title ?? '',
+      // TODO: (DV_PICKER) We can cache the dataView spec fields in redux and just pull them from there
       fields: Object.values(dataViewSpec.fields || {}),
     }),
     [dataViewSpec]

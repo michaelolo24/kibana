@@ -80,6 +80,7 @@ const AdditionalToolbarControlsComponent = ({
     [dispatch, tableType, trackGroupChange]
   );
 
+  // TODO: (DV_PICKER) This can be generalized to just return the fields for the current data view.
   const fields = useMemo(() => {
     return Object.values(sourcererDataView.fields || {});
   }, [sourcererDataView.fields]);

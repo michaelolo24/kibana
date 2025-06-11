@@ -9,6 +9,7 @@ import { useMemo } from 'react';
 import type { DataViewSpec, SharedDataViewSelectionState } from '../redux/types';
 import { DataViewManagerScopeName } from '../constants';
 import { useDataView } from './use_data_view';
+import { dataViewSpecCache } from '../utils/data_view_spec_cache';
 
 export interface UseDataViewSpecResult {
   /**
@@ -25,14 +26,25 @@ export interface UseDataViewSpecResult {
  * Returns an object with the dataViewSpec and status values for the given scopeName.
  */
 export const useDataViewSpec = (
-  scopeName: DataViewManagerScopeName = DataViewManagerScopeName.default
+  scopeName: DataViewManagerScopeName = DataViewManagerScopeName.default,
+  // This can be prohibitively expensive with sufficient enough fields and called in enough components
+  includeFields: boolean = true
 ): UseDataViewSpecResult => {
   const { dataView, status } = useDataView(scopeName);
+
+  const cachedSpec = dataViewSpecCache.get(dataView?.id ?? '');
+  const shouldUpdateCacheWithFieldsInformation = cachedSpec && !cachedSpec.fields && includeFields;
+
+  if (dataView?.id && (!cachedSpec || shouldUpdateCacheWithFieldsInformation)) {
+    // Cache the DataViewSpec to avoid recalculating it every time the hook is called
+    dataViewSpecCache.set(dataView?.id, dataView.toSpec?.(includeFields));
+  }
 
   return useMemo(() => {
     // NOTE: remove this after we are ready for undefined (lazy) data view everywhere in the app
     // https://github.com/elastic/security-team/issues/11959
-    if (!dataView) {
+    // every dataView should have the saved object id
+    if (!dataView || !dataView.id) {
       return {
         dataViewSpec: {
           id: '',
@@ -41,7 +53,9 @@ export const useDataViewSpec = (
         status,
       };
     }
-
-    return { dataViewSpec: dataView?.toSpec?.(), status };
-  }, [dataView, status]);
+    const dataViewSpec = cachedSpec ?? dataView.toSpec?.(includeFields);
+    // TODO: (DV_PICKER) Remove this in the cleanup phase, just here for testing purposes
+    dataViewSpecCache.log();
+    return { dataViewSpec, status };
+  }, [cachedSpec, dataView, includeFields, status]);
 };
