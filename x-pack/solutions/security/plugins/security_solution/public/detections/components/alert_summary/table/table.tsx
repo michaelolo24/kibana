@@ -217,7 +217,7 @@ export const Table = memo(({ dataView, groupingFilters, packages, ruleResponse }
     const combinedQuery = combineQueries({
       config: getEsQueryConfig(uiSettings),
       dataProviders: [],
-      dataViewSpec,
+      dataViewSpec, // TODO: Should we add the newDataViewPickerEnabledDataView prop here?
       browserFields,
       filters,
       kqlQuery: globalQuery,
