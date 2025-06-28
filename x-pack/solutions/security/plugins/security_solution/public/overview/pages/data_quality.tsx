@@ -157,6 +157,10 @@ const DataQualityComponent: React.FC = () => {
     return <EuiLoadingSpinner size="l" data-test-subj="ecsDataQualityDashboardLoader" />;
   }
 
+  if (newDataViewPickerEnabled && status === 'pristine') {
+    return null;
+  }
+
   return (
     <>
       {indicesExist ? (

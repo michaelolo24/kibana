@@ -177,6 +177,10 @@ const HostsComponent = () => {
     [containerElement, onSkipFocusBeforeEventsTable, onSkipFocusAfterEventsTable]
   );
 
+  if (newDataViewPickerEnabled && status === 'pristine') {
+    return null;
+  }
+
   return (
     <>
       {indicesExist ? (

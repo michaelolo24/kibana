@@ -179,6 +179,10 @@ const UsersComponent = () => {
   const capabilities = useMlCapabilities();
   const navTabs = useMemo(() => navTabsUsers(hasMlUserPermissions(capabilities)), [capabilities]);
 
+  if (newDataViewPickerEnabled && status === 'pristine') {
+    return null;
+  }
+
   return (
     <>
       {indicesExist ? (

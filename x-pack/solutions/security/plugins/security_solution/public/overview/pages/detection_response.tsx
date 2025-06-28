@@ -64,6 +64,10 @@ const DetectionResponseComponent = () => {
     return <NoPrivileges docLinkSelector={(docLinks: DocLinks) => docLinks.siem.privileges} />;
   }
 
+  if (newDataViewPickerEnabled && status === 'pristine') {
+    return null;
+  }
+
   return (
     <>
       {indicesExist ? (

@@ -202,6 +202,10 @@ const NetworkDetailsComponent: React.FC = () => {
       : dataViewSpecToViewBase(oldSourcererDataView);
   }, [experimentalDataView, newDataViewPickerEnabled, oldSourcererDataView]);
 
+  if (newDataViewPickerEnabled && status === 'pristine') {
+    return null;
+  }
+
   return (
     <div data-test-subj="network-details-page">
       {indicesExist ? (

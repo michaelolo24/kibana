@@ -125,6 +125,10 @@ export const NetworkDetails = ({ ip, flowTarget }: NetworkDetailsProps) => {
     aggregationInterval: 'auto',
   });
 
+  if (newDataViewPickerEnabled && status === 'pristine') {
+    return null;
+  }
+
   return indicesExist ? (
     <IpOverview
       contextID={undefined}

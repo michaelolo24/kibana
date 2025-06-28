@@ -153,6 +153,10 @@ const NetworkComponent = React.memo<NetworkComponentProps>(
 
     useInvalidFilterQuery({ id: ID, filterQuery, kqlError, query, startDate: from, endDate: to });
 
+    if (newDataViewPickerEnabled && status === 'pristine') {
+      return null;
+    }
+
     return (
       <>
         {indicesExist ? (
