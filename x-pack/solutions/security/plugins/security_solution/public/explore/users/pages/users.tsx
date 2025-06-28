@@ -52,7 +52,6 @@ import { useMlCapabilities } from '../../../common/components/ml/hooks/use_ml_ca
 import { EmptyPrompt } from '../../../common/components/empty_prompt';
 import { userNameExistsFilter } from './details/helpers';
 import { useDataView } from '../../../data_view_manager/hooks/use_data_view';
-import { useDataViewSpec } from '../../../data_view_manager/hooks/use_data_view_spec';
 import { useSelectedPatterns } from '../../../data_view_manager/hooks/use_selected_patterns';
 
 const ID = 'UsersQueryId';
@@ -112,10 +111,8 @@ const UsersComponent = () => {
   const newDataViewPickerEnabled = useIsExperimentalFeatureEnabled('newDataViewPickerEnabled');
 
   const { dataView } = useDataView();
-  const { dataViewSpec } = useDataViewSpec();
   const experimentalSelectedPatterns = useSelectedPatterns();
 
-  const sourcererDataView = newDataViewPickerEnabled ? dataViewSpec : oldSourcererDataView;
   const indicesExist = newDataViewPickerEnabled
     ? !!dataView?.matchedIndices?.length
     : oldIndicesExist;
@@ -127,21 +124,23 @@ const UsersComponent = () => {
     () =>
       convertToBuildEsQuery({
         config: getEsQueryConfig(uiSettings),
-        dataViewSpec: sourcererDataView,
+        dataViewSpec: oldSourcererDataView,
+        newDataViewPickerEnabledDataView: dataView,
         queries: [query],
         filters: globalFilters,
       }),
-    [globalFilters, sourcererDataView, uiSettings, query]
+    [uiSettings, oldSourcererDataView, dataView, query, globalFilters]
   );
   const [tabsFilterQuery] = useMemo(
     () =>
       convertToBuildEsQuery({
         config: getEsQueryConfig(uiSettings),
-        dataViewSpec: sourcererDataView,
+        dataViewSpec: oldSourcererDataView,
+        newDataViewPickerEnabledDataView: dataView,
         queries: [query],
         filters: tabsFilters,
       }),
-    [sourcererDataView, query, tabsFilters, uiSettings]
+    [dataView, oldSourcererDataView, query, tabsFilters, uiSettings]
   );
 
   useInvalidFilterQuery({
@@ -186,7 +185,7 @@ const UsersComponent = () => {
         <StyledFullHeightContainer onKeyDown={onKeyDown} ref={containerElement}>
           <EuiWindowEvent event="resize" handler={noop} />
           <FiltersGlobal>
-            <SiemSearchBar sourcererDataView={sourcererDataView} id={InputsModelId.global} />
+            <SiemSearchBar sourcererDataView={oldSourcererDataView} id={InputsModelId.global} />
           </FiltersGlobal>
 
           <SecuritySolutionPageWrapper noPadding={globalFullScreen}>

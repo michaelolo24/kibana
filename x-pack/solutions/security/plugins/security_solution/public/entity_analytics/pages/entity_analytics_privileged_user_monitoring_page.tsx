@@ -109,7 +109,7 @@ export const EntityAnalyticsPrivilegedUserMonitoringPage = () => {
   } = useSourcererDataView();
   const newDataViewPickerEnabled = useIsExperimentalFeatureEnabled('newDataViewPickerEnabled');
   const { dataView, status } = useDataView();
-  const { dataViewSpec } = useDataViewSpec();
+  const { dataViewSpec } = useDataViewSpec(); // TODO: Sync with Pablo on replacing this with just DataView
 
   const isSourcererLoading = useMemo(
     () => (newDataViewPickerEnabled ? status !== 'ready' : oldIsSourcererLoading),

@@ -49,7 +49,7 @@ import { useNotesInFlyout } from '../../properties/use_notes_in_flyout';
 import { NotesFlyout } from '../../properties/notes_flyout';
 import { DocumentEventTypes, NotesEventTypes } from '../../../../../common/lib/telemetry';
 import { TimelineRefetch } from '../../refetch_timeline';
-import { useDataViewSpec } from '../../../../../data_view_manager/hooks/use_data_view_spec';
+import { useDataView } from '../../../../../data_view_manager/hooks/use_data_view';
 import { useSelectedPatterns } from '../../../../../data_view_manager/hooks/use_selected_patterns';
 
 export type Props = TimelineTabCommonProps & PropsFromRedux;
@@ -88,11 +88,9 @@ export const EqlTabContentComponent: React.FC<Props> = ({
     sourcererDataView: oldSourcererDataViewSpec,
   } = useSourcererDataView(SourcererScopeName.timeline);
 
-  const { dataViewSpec: experimentalDataViewSpec, status } = useDataViewSpec(
-    SourcererScopeName.timeline
-  );
+  const { dataView: experimentalDataView, status } = useDataView(SourcererScopeName.timeline);
   const experimentalSelectedPatterns = useSelectedPatterns(SourcererScopeName.timeline);
-  const experimentalDataViewId = experimentalDataViewSpec.id ?? null;
+  const experimentalDataViewId = experimentalDataView?.id ?? null;
 
   const dataViewId = useMemo(
     () => (newDataViewPickerEnabled ? experimentalDataViewId : oldDataViewId),
@@ -102,10 +100,13 @@ export const EqlTabContentComponent: React.FC<Props> = ({
     () => (newDataViewPickerEnabled ? status !== 'ready' : oldSourcererLoading),
     [newDataViewPickerEnabled, oldSourcererLoading, status]
   );
-  const dataViewSpec: DataViewSpec = useMemo(
-    () => (newDataViewPickerEnabled ? experimentalDataViewSpec : oldSourcererDataViewSpec),
-    [experimentalDataViewSpec, newDataViewPickerEnabled, oldSourcererDataViewSpec]
-  );
+
+  const runtimeMappings = useMemo(() => {
+    return newDataViewPickerEnabled
+      ? (experimentalDataView?.getRuntimeMappings() as RunTimeMappings)
+      : (oldSourcererDataViewSpec.runtimeFieldMap as RunTimeMappings);
+  }, [newDataViewPickerEnabled, experimentalDataView, oldSourcererDataViewSpec.runtimeFieldMap]);
+
   const selectedPatterns = useMemo(
     () => (newDataViewPickerEnabled ? experimentalSelectedPatterns : oldSelectedPatterns),
     [experimentalSelectedPatterns, newDataViewPickerEnabled, oldSelectedPatterns]
@@ -144,7 +145,7 @@ export const EqlTabContentComponent: React.FC<Props> = ({
       indexNames: selectedPatterns,
       language: 'eql',
       limit: sampleSize,
-      runtimeMappings: dataViewSpec.runtimeFieldMap as RunTimeMappings,
+      runtimeMappings,
       skip: !canQueryTimeline(),
       startDate: start,
       timerangeKind,

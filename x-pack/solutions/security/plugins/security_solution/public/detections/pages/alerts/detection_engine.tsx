@@ -94,6 +94,7 @@ import { GroupedAlertsTable } from '../../components/alerts_table/alerts_groupin
 import { DetectionEngineAlertsTable } from '../../components/alerts_table';
 import type { AddFilterProps } from '../../components/alerts_kpis/common/types';
 import { useDataViewSpec } from '../../../data_view_manager/hooks/use_data_view_spec';
+import { useDataView } from '@kbn/security-solution-plugin/public/data_view_manager/hooks/use_data_view';
 
 /**
  * Need a 100% height here to account for the graph/analyze tool, which sets no explicit height parameters, but fills the available space.
@@ -106,6 +107,7 @@ const StyledFullHeightContainer = styled.div`
 
 type DetectionEngineComponentProps = PropsFromRedux;
 
+// eslint-disable-next-line complexity
 const DetectionEnginePageComponent: React.FC<DetectionEngineComponentProps> = () => {
   const dispatch = useDispatch();
   const containerElement = useRef<HTMLDivElement | null>(null);
@@ -162,9 +164,16 @@ const DetectionEnginePageComponent: React.FC<DetectionEngineComponentProps> = ()
   const { dataViewSpec: experimentalDataViewSpec, status: dataViewSpecStatus } = useDataViewSpec(
     SourcererScopeName.detections
   );
+  const { dataView: experimentalDataView } = useDataView(SourcererScopeName.detections);
   const sourcererDataViewSpec: DataViewSpec = newDataViewPickerEnabled
     ? experimentalDataViewSpec
     : oldSourcererDataViewSpec;
+  const runtimeMappings = useMemo(() => {
+    return newDataViewPickerEnabled
+      ? (experimentalDataView?.getRuntimeMappings() as RunTimeMappings) ?? {}
+      : (oldSourcererDataViewSpec?.runtimeFieldMap as RunTimeMappings) ?? {};
+  }, [newDataViewPickerEnabled, experimentalDataView, oldSourcererDataViewSpec?.runtimeFieldMap]);
+
   const isLoadingIndexPattern = newDataViewPickerEnabled
     ? dataViewSpecStatus !== 'ready'
     : oldIsLoadingIndexPattern;
@@ -175,7 +184,7 @@ const DetectionEnginePageComponent: React.FC<DetectionEngineComponentProps> = ()
     TableId.alertsOnAlertsPage
   );
 
-  const loading = userInfoLoading || listsConfigLoading;
+  const loading = userInfoLoading || listsConfigLoading || isLoadingIndexPattern;
   const {
     application: { navigateToUrl },
     data,
@@ -397,7 +406,7 @@ const DetectionEnginePageComponent: React.FC<DetectionEngineComponentProps> = ()
             <SiemSearchBar
               id={InputsModelId.global}
               pollForSignalIndex={pollForSignalIndex}
-              sourcererDataView={sourcererDataViewSpec}
+              sourcererDataView={oldSourcererDataViewSpec} // Can be removed after migration to new dataview picker
             />
           </FiltersGlobal>
           <SecuritySolutionPageWrapper
@@ -433,7 +442,7 @@ const DetectionEnginePageComponent: React.FC<DetectionEngineComponentProps> = ()
                 query={query}
                 timeRange={pageFiltersTimerange}
                 onInit={setDetectionPageFilterHandler}
-                dataViewSpec={sourcererDataViewSpec}
+                dataViewSpec={sourcererDataViewSpec} // TODO: Can we safely replace this?
               />
               <EuiSpacer size="l" />
               <ChartPanels
@@ -441,7 +450,7 @@ const DetectionEnginePageComponent: React.FC<DetectionEngineComponentProps> = ()
                 alertsDefaultFilters={alertsDefaultFilters}
                 isLoadingIndexPattern={isChartPanelLoading}
                 query={query}
-                runtimeMappings={sourcererDataViewSpec.runtimeFieldMap as RunTimeMappings}
+                runtimeMappings={runtimeMappings}
                 signalIndexName={signalIndexName}
                 updateDateRangeCallback={updateDateRangeCallback}
               />
@@ -450,7 +459,8 @@ const DetectionEnginePageComponent: React.FC<DetectionEngineComponentProps> = ()
             <GroupedAlertsTable
               accordionButtonContent={defaultGroupTitleRenderers}
               accordionExtraActionGroupStats={accordionExtraActionGroupStats}
-              dataViewSpec={sourcererDataViewSpec}
+              dataView={experimentalDataView}
+              dataViewSpec={sourcererDataViewSpec} // TODO: Should be removed after migrating to new data view picker
               defaultFilters={alertsTableDefaultFilters}
               defaultGroupingOptions={defaultGroupingOptions}
               from={from}

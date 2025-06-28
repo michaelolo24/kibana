@@ -8,7 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import type { Filter, Query } from '@kbn/es-query';
-import type { DataViewSpec } from '@kbn/data-views-plugin/common';
+import type { DataViewSpec, DataView } from '@kbn/data-views-plugin/common';
 import {
   type GroupOption,
   type GroupStatsItem,
@@ -59,6 +59,7 @@ export interface AlertsTableComponentProps {
    * DataViewSpec object to use internally to fetch the data
    */
   dataViewSpec: DataViewSpec;
+  dataView?: DataView;
   defaultFilters?: Filter[];
   /**
    * Default values to display in the group selection dropdown.
@@ -174,8 +175,11 @@ const GroupedAlertsTableComponent: React.FC<AlertsTableComponentProps> = (props)
   );
 
   const fields = useMemo(
-    () => Object.values(props.dataViewSpec.fields || {}),
-    [props.dataViewSpec]
+    () =>
+      props.dataView
+        ? props.dataView?.fields.map((field) => field.spec)
+        : Object.values(props.dataViewSpec.fields || {}),
+    [props.dataView, props.dataViewSpec.fields]
   );
 
   const groupingOptions = useMemo(

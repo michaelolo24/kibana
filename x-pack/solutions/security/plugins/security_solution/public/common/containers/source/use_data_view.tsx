@@ -9,8 +9,9 @@ import { useCallback, useRef } from 'react';
 import type { Subscription } from 'rxjs';
 import { useDispatch } from 'react-redux';
 import memoizeOne from 'memoize-one';
+import deepEqual from 'fast-deep-equal';
 import type { BrowserFields } from '@kbn/timelines-plugin/common';
-import type { DataViewSpec } from '@kbn/data-views-plugin/public';
+import type { DataView, DataViewSpec } from '@kbn/data-views-plugin/public';
 import type { FieldCategory } from '@kbn/timelines-plugin/common/search_strategy';
 
 import { getCategory } from '@kbn/response-ops-alerts-fields-browser/helpers';
@@ -66,8 +67,47 @@ export const getDataViewStateFromIndexFields = memoizeOne(
       return { browserFields: browserFields as DangerCastForBrowserFieldsMutation };
     }
   },
-  (newArgs, lastArgs) => newArgs[0] === lastArgs[0] && newArgs[1]?.length === lastArgs[1]?.length
+  (newArgs, lastArgs) => deepEqual(newArgs, lastArgs)
 );
+
+/**
+ * HOT Code path where the fields can be 16087 in length or larger. This is
+ * VERY mutatious on purpose to improve the performance of the transform.
+ */
+export const getDataViewStateFromDataViewFields = memoizeOne(
+  (_title: string, fields: DataView['fields']): DataViewInfo => {
+    // Adds two dangerous casts to allow for mutations within this function
+    type DangerCastForMutation = Record<string, {}>;
+    if (fields == null) {
+      return { browserFields: {} };
+    } else {
+      const browserFields: BrowserFields = {};
+      for (let i = 0; i < fields.length; i++) {
+        const field = fields[i].spec;
+        const name = field.name;
+        if (name == null) {
+          continue;
+        }
+        const category = getCategory(name);
+        if (browserFields[category] == null) {
+          (browserFields as DangerCastForMutation)[category] = { fields: {} };
+        }
+        const categoryFields = browserFields[category].fields;
+        if (categoryFields) {
+          categoryFields[name] = field;
+        }
+      }
+      return { browserFields: browserFields as DangerCastForBrowserFieldsMutation };
+    }
+  },
+  (newArgs, lastArgs) => newArgs[0] === lastArgs[0]
+);
+
+// This is a utility function to get an instance of the getDataViewStateFromIndexFields function
+// If the original function is called in a hook called in different places, the memoization becomes potential useless
+// as each call overrides the previous one. This hook is used to ensure that the memoization is preserved for each hook instance.
+export const getMemoizedGetDataViewStateFromDataViewFields = () =>
+  getDataViewStateFromDataViewFields;
 
 export const useDataView = (): {
   indexFieldsSearch: IndexFieldSearch;
