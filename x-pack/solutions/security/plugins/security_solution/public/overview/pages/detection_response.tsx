@@ -33,7 +33,6 @@ import { FiltersGlobal } from '../../common/components/filters_global';
 import { useGlobalFilterQuery } from '../../common/hooks/use_global_filter_query';
 import { useKibana } from '../../common/lib/kibana';
 import { useDataView } from '../../data_view_manager/hooks/use_data_view';
-import { useDataViewSpec } from '../../data_view_manager/hooks/use_data_view_spec';
 
 const DetectionResponseComponent = () => {
   const { cases } = useKibana().services;
@@ -47,9 +46,7 @@ const DetectionResponseComponent = () => {
 
   const newDataViewPickerEnabled = useIsExperimentalFeatureEnabled('newDataViewPickerEnabled');
   const { dataView, status } = useDataView();
-  const { dataViewSpec } = useDataViewSpec();
 
-  const sourcererDataView = newDataViewPickerEnabled ? dataViewSpec : oldSourcererDataView;
   const indicesExist = newDataViewPickerEnabled
     ? !!dataView?.matchedIndices?.length
     : oldIndicesExist;
@@ -72,7 +69,7 @@ const DetectionResponseComponent = () => {
       {indicesExist ? (
         <>
           <FiltersGlobal>
-            <SiemSearchBar id={InputsModelId.global} sourcererDataView={sourcererDataView} />
+            <SiemSearchBar id={InputsModelId.global} sourcererDataView={oldSourcererDataView} />
           </FiltersGlobal>
           <SecuritySolutionPageWrapper data-test-subj="detectionResponsePage">
             <HeaderPage title={i18n.DETECTION_RESPONSE_TITLE} />
