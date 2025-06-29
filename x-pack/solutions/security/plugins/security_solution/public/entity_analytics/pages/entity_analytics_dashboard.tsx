@@ -62,7 +62,10 @@ const EntityAnalyticsComponent = () => {
       ) : (
         <>
           <FiltersGlobal>
-            <SiemSearchBar id={InputsModelId.global} sourcererDataView={oldSourcererDataViewSpec} />
+            <SiemSearchBar
+              id={InputsModelId.global}
+              sourcererDataView={oldSourcererDataViewSpec} // Can be removed after migration to new dataview picker
+            />
           </FiltersGlobal>
 
           <SecuritySolutionPageWrapper data-test-subj="entityAnalyticsPage">

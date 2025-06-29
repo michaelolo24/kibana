@@ -117,7 +117,7 @@ const NetworkDetailsComponent: React.FC = () => {
 
   const newDataViewPickerEnabled = useIsExperimentalFeatureEnabled('newDataViewPickerEnabled');
 
-  const { dataView: experimentalDataView } = useDataView();
+  const { dataView: experimentalDataView, status } = useDataView();
   const experimentalSelectedPatterns = useSelectedPatterns();
 
   const indicesExist = newDataViewPickerEnabled
