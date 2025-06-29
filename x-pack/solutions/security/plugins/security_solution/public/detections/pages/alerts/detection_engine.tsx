@@ -35,6 +35,7 @@ import { isEqual } from 'lodash';
 import type { FilterGroupHandler } from '@kbn/alerts-ui-shared';
 import type { RunTimeMappings } from '@kbn/timelines-plugin/common/search_strategy';
 import type { DataViewSpec } from '@kbn/data-views-plugin/common';
+import { useDataView } from '../../../data_view_manager/hooks/use_data_view';
 import { useGroupTakeActionsItems } from '../../hooks/alerts_table/use_group_take_action_items';
 import {
   defaultGroupingOptions,
@@ -94,7 +95,6 @@ import { GroupedAlertsTable } from '../../components/alerts_table/alerts_groupin
 import { DetectionEngineAlertsTable } from '../../components/alerts_table';
 import type { AddFilterProps } from '../../components/alerts_kpis/common/types';
 import { useDataViewSpec } from '../../../data_view_manager/hooks/use_data_view_spec';
-import { useDataView } from '@kbn/security-solution-plugin/public/data_view_manager/hooks/use_data_view';
 
 /**
  * Need a 100% height here to account for the graph/analyze tool, which sets no explicit height parameters, but fills the available space.
