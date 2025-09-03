@@ -7,7 +7,7 @@
 
 import type { ValidationFunc } from '@kbn/es-ui-shared-plugin/static/forms/hook_form_lib';
 import { isEmpty, isObject } from 'lodash';
-import * as i18n from './translations';
+import * as i18n from '../servicenow/translations';
 
 const MAX_ADDITIONAL_FIELDS_LENGTH = 10;
 

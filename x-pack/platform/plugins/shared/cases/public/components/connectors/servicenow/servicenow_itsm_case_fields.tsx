@@ -22,8 +22,8 @@ import { useGetChoices } from './use_get_choices';
 import type { Fields } from './types';
 import { choicesToEuiOptions } from './helpers';
 import { DeprecatedCallout } from '../deprecated_callout';
-import { validateJSON } from './validate_json';
-import { JsonEditorField } from './json_editor_field';
+import { validateJSON } from '../json_editor_field/validate_json';
+import { JsonEditorField } from '../json_editor_field/json_editor_field';
 
 const choicesToGet = ['urgency', 'severity', 'impact', 'category', 'subcategory'];
 const defaultFields: Fields = {

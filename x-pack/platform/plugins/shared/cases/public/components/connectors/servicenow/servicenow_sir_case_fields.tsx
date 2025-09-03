@@ -23,8 +23,8 @@ import { choicesToEuiOptions } from './helpers';
 
 import * as i18n from './translations';
 import { DeprecatedCallout } from '../deprecated_callout';
-import { validateJSON } from './validate_json';
-import { JsonEditorField } from './json_editor_field';
+import { validateJSON } from '../json_editor_field/validate_json';
+import { JsonEditorField } from '../json_editor_field/json_editor_field';
 
 const choicesToGet = ['category', 'subcategory', 'priority'];
 const defaultFields: Fields = {
