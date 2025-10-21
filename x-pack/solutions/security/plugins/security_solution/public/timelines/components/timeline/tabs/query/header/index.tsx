@@ -11,6 +11,7 @@ import {
   EuiCallOut,
   EuiFlexGroup,
   EuiFlexItem,
+  EuiText,
   useEuiTheme,
 } from '@elastic/eui';
 import React, { useMemo } from 'react';
@@ -135,21 +136,35 @@ const QueryTabHeaderComponent: React.FC<Props> = ({
                     title={i18n.CALL_OUT_ALERTS_ONLY_MIGRATION_TITLE}
                     color="warning"
                     iconType="warning"
-                    size="m"
                   >
-                    <EuiFlexGroup gutterSize="s" alignItems="flexStart">
-                      <EuiFlexItem grow={false}>
-                        <EuiButton color="warning" onClick={openEditor} fill>
-                          {'Duplicate data view'}
-                        </EuiButton>
+                    <EuiFlexGroup justifyContent="spaceBetween" responsive={false}>
+                      <EuiFlexItem>
+                        <EuiText size="s">{i18n.CALL_OUT_ALERTS_ONLY_MIGRATION_CONTENT}</EuiText>
                       </EuiFlexItem>
                       <EuiFlexItem grow={false}>
-                        <EuiButtonEmpty
-                          aria-label="Switch to alerts data view"
-                          onClick={selectAlertsDataView}
-                        >
-                          {'Switch to alerts data view'}
-                        </EuiButtonEmpty>
+                        <EuiFlexGroup alignItems="center" gutterSize="xs" responsive={false}>
+                          <EuiFlexItem grow={false}>
+                            <EuiButtonEmpty
+                              aria-label={i18n.CALL_OUT_ALERTS_ONLY_MIGRATION_SWITCH_BUTTON}
+                              color="text"
+                              onClick={selectAlertsDataView}
+                              size="s"
+                            >
+                              {i18n.CALL_OUT_ALERTS_ONLY_MIGRATION_SWITCH_BUTTON}
+                            </EuiButtonEmpty>
+                          </EuiFlexItem>
+                          <EuiFlexItem grow={false}>
+                            <EuiButton
+                              aria-label={i18n.CALL_OUT_ALERTS_ONLY_MIGRATION_DUPLICATE_BUTTON}
+                              color="warning"
+                              onClick={openEditor}
+                              fill
+                              size="s"
+                            >
+                              {i18n.CALL_OUT_ALERTS_ONLY_MIGRATION_DUPLICATE_BUTTON}
+                            </EuiButton>
+                          </EuiFlexItem>
+                        </EuiFlexGroup>
                       </EuiFlexItem>
                     </EuiFlexGroup>
                   </EuiCallOut>

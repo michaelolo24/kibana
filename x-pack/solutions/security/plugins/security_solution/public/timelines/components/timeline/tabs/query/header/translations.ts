@@ -24,9 +24,30 @@ export const CALL_OUT_IMMUTABLE = i18n.translate(
 );
 
 export const CALL_OUT_ALERTS_ONLY_MIGRATION_TITLE = i18n.translate(
+  'xpack.securitySolution.timeline.callOut.alertsOnlyMigration.message.title',
+  {
+    defaultMessage: 'Show detection alerts option has been removed.',
+  }
+);
+
+export const CALL_OUT_ALERTS_ONLY_MIGRATION_CONTENT = i18n.translate(
   'xpack.securitySolution.timeline.callOut.alertsOnlyMigration.message.description',
   {
     defaultMessage:
-      'Show detection alerts option has been removed. Duplicate your current data view to maintain runtime fields or use the security alerts data view.',
+      'Duplicate your current data view to maintain runtime fields or use the security alerts data view.',
+  }
+);
+
+export const CALL_OUT_ALERTS_ONLY_MIGRATION_DUPLICATE_BUTTON = i18n.translate(
+  'xpack.securitySolution.timeline.callOut.alertsOnlyMigration.duplicateButton.label',
+  {
+    defaultMessage: 'Duplicate data view.',
+  }
+);
+
+export const CALL_OUT_ALERTS_ONLY_MIGRATION_SWITCH_BUTTON = i18n.translate(
+  'xpack.securitySolution.timeline.callOut.alertsOnlyMigration.switchButton.label',
+  {
+    defaultMessage: 'Switch to alerts data view.',
   }
 );
