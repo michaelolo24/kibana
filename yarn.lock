@@ -7595,6 +7595,10 @@
   version "0.0.0"
   uid ""
 
+"@kbn/onecases-plugin@link:x-pack/platform/plugins/shared/onecases":
+  version "0.0.0"
+  uid ""
+
 "@kbn/onechat-browser@link:x-pack/platform/packages/shared/onechat/onechat-browser":
   version "0.0.0"
   uid ""

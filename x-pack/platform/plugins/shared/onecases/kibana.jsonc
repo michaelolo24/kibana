@@ -1,0 +1,35 @@
+{
+  "type": "plugin",
+  "id": "@kbn/onecases-plugin",
+  "owner": ["@elastic/kibana-cases"],
+  "group": "platform",
+  "visibility": "shared",
+  "description": "A plugin which registers a very simple oneCases application.",
+  "plugin": {
+    "id": "onecases",
+    "server": false,
+    "browser": true,
+    "requiredPlugins": [
+      "data",
+      "charts",
+      "expressions",
+      "fieldFormats",
+      "uiActions",
+      "urlForwarding",
+      "navigation",
+      "embeddable",
+      "inspector",
+      "screenshotMode",
+      "presentationUtil",
+      "dataViews",
+      "dataViewEditor",
+      "unifiedSearch",
+      "usageCollection",
+      "savedObjectsFinder",
+      "savedObjectsManagement",
+      "savedSearch",
+      "contentManagement"
+    ],
+    "optionalPlugins": ["home"]
+  }
+}
