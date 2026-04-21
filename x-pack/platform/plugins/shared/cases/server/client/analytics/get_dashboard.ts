@@ -85,9 +85,15 @@ const safe = async <T>(
   try {
     return { value: await fn(), error: null };
   } catch (error) {
+    // ES|QL errors come back as Elasticsearch transport errors — the human-readable reason
+    // lives in `meta.body.error.reason`; fall back to `error.message` for other shapes.
+    const esReason =
+      error?.meta?.body?.error?.reason ??
+      error?.meta?.body?.error?.root_cause?.[0]?.reason ??
+      null;
     logger.warn(
       `[cases:analytics:dashboard] "${label}" query failed: ${
-        error?.message ?? String(error)
+        esReason ?? error?.message ?? String(error)
       }`
     );
     return { value: null, error: ANALYTICS_QUERY_FAILED };
@@ -134,12 +140,23 @@ export const getAnalyticsDashboard = async (
 
     const owner = buildOwnerFilter(authorizedOwners);
 
-    const runQuery = (query: PresetQuery) =>
-      runEsql({
-        soClient: unsecuredSavedObjectsClient,
-        spaceId,
-        query,
-      }) as unknown as Promise<EsqlResponse>;
+    const runQuery = async (query: PresetQuery) => {
+      try {
+        return (await runEsql({
+          soClient: unsecuredSavedObjectsClient,
+          spaceId,
+          query,
+        })) as unknown as EsqlResponse;
+      } catch (err) {
+        // Re-throw with pipeline context attached; `safe()` will log the wrapped error.
+        const original =
+          err?.meta?.body?.error?.reason ??
+          err?.meta?.body?.error?.root_cause?.[0]?.reason ??
+          err?.message ??
+          String(err);
+        throw new Error(`${original} — pipeline: [${query.pipeline}]`);
+      }
+    };
 
     const [
       openCasesCard,
