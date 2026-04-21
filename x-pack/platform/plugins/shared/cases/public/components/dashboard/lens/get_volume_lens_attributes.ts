@@ -46,14 +46,14 @@ export const getVolumeLensAttributes = ({
   owner,
   ids,
 }: GetVolumeLensAttributesArgs): TypedLensByValueInput['attributes'] => {
-  const ownerClause = owner.length > 0 ? `| WHERE cases.attributes.owner IN (${esqlStringList(owner)})` : '';
+  const ownerClause = owner.length > 0 ? `| WHERE cases.owner IN (${esqlStringList(owner)})` : '';
 
   const openedEsql = [
     `FROM ${CASES_SO_INDEX} METADATA _id`,
     `| WHERE type == "cases"`,
     ownerClause,
-    `| WHERE cases.attributes.created_at IS NOT NULL`,
-    `| EVAL bucket = DATE_TRUNC(1 day, cases.attributes.created_at)`,
+    `| WHERE cases.created_at IS NOT NULL`,
+    `| EVAL bucket = DATE_TRUNC(1 day, cases.created_at)`,
     `| STATS opened = COUNT(*) BY bucket`,
     `| SORT bucket ASC`,
     `| LIMIT 365`,
@@ -65,8 +65,8 @@ export const getVolumeLensAttributes = ({
     `FROM ${CASES_SO_INDEX} METADATA _id`,
     `| WHERE type == "cases"`,
     ownerClause,
-    `| WHERE cases.attributes.closed_at IS NOT NULL`,
-    `| EVAL bucket = DATE_TRUNC(1 day, cases.attributes.closed_at)`,
+    `| WHERE cases.closed_at IS NOT NULL`,
+    `| EVAL bucket = DATE_TRUNC(1 day, cases.closed_at)`,
     `| STATS closed = COUNT(*) BY bucket`,
     `| SORT bucket ASC`,
     `| LIMIT 365`,
