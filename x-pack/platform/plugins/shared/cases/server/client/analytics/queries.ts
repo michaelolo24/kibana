@@ -10,6 +10,24 @@ import type { SavedObjectsClientContract } from '@kbn/core/server';
 
 export const CASE_SAVED_OBJECT_TYPE = 'cases';
 
+/**
+ * `cases.status` and `cases.severity` are persisted as numeric `short` in the Cases SO mapping
+ * (see `server/common/types/case.ts::CasePersistedStatus`). Compare against these constants —
+ * string literals like "closed" are the public/domain form and do NOT match the stored value.
+ */
+export const PERSISTED_STATUS = {
+  OPEN: 0,
+  IN_PROGRESS: 10,
+  CLOSED: 20,
+} as const;
+
+export const PERSISTED_SEVERITY = {
+  LOW: 0,
+  MEDIUM: 10,
+  HIGH: 20,
+  CRITICAL: 30,
+} as const;
+
 export interface OwnerFilter {
   /**
    * Optional pipe stage: `| WHERE cases.owner IN (?, ?, ...) `.
@@ -21,15 +39,6 @@ export interface OwnerFilter {
   params: estypes.EsqlESQLParam[];
 }
 
-/**
- * Build the owner-filter pipe stage.
- *
- * - `authorizedOwners === undefined` (security disabled) → no stage emitted. All owners implicitly authorized.
- * - `authorizedOwners.length === 0` (security enabled, user has no access) → caller MUST short-circuit
- *   before invoking this; if a query still runs with an empty stage, no owner filter is applied which
- *   would leak cross-owner data. This function returns an empty stage in that case only as a fallback.
- * - `authorizedOwners.length > 0` → `WHERE cases.owner IN (?, ?, ...)` with one `?` per owner.
- */
 export const buildOwnerFilter = (authorizedOwners: string[] | undefined): OwnerFilter => {
   if (!authorizedOwners || authorizedOwners.length === 0) {
     return { stage: '', params: [] };
@@ -51,14 +60,18 @@ const pipeline = (ownerStage: string, ...stages: string[]): string =>
   `${ownerStage}${stages.map((s) => s.trim()).filter(Boolean).join(' | ')}`.trim();
 
 export const openCasesQuery = (owner: OwnerFilter): PresetQuery => ({
-  pipeline: pipeline(owner.stage, '| WHERE cases.status != "closed"', '| STATS count = COUNT(*)'),
+  pipeline: pipeline(
+    owner.stage,
+    `| WHERE cases.status != ${PERSISTED_STATUS.CLOSED}`,
+    '| STATS count = COUNT(*)'
+  ),
   params: [...owner.params],
 });
 
 export const unassignedQuery = (owner: OwnerFilter): PresetQuery => ({
   pipeline: pipeline(
     owner.stage,
-    '| WHERE cases.status != "closed"',
+    `| WHERE cases.status != ${PERSISTED_STATUS.CLOSED}`,
     '| EVAL assignee_count = MV_COUNT(cases.assignees.uid)',
     '| WHERE assignee_count IS NULL OR assignee_count == 0',
     '| STATS count = COUNT(*)'
@@ -74,7 +87,7 @@ export const openedInWindowQuery = (
 ): PresetQuery => ({
   pipeline: pipeline(
     owner.stage,
-    '| WHERE cases.created_at >= TO_DATETIME(?) AND cases.created_at <= TO_DATETIME(?)',
+    '| WHERE cases.created_at >= ? AND cases.created_at <= ?',
     '| STATS count = COUNT(*)'
   ),
   params: [...owner.params, from, to],
@@ -87,19 +100,21 @@ export const closedInWindowQuery = (
 ): PresetQuery => ({
   pipeline: pipeline(
     owner.stage,
-    '| WHERE cases.closed_at >= TO_DATETIME(?) AND cases.closed_at <= TO_DATETIME(?)',
+    '| WHERE cases.closed_at >= ? AND cases.closed_at <= ?',
     '| STATS count = COUNT(*)'
   ),
   params: [...owner.params, from, to],
 });
 
+// Use the pre-computed `cases.duration` (unsigned_long, milliseconds) rather than DATE_DIFF —
+// matches the existing Cases `getCasesMetrics` MTTR aggregation at
+// `server/client/metrics/all_cases/aggregations/avg_duration.ts`.
 export const mttrQuery = (owner: OwnerFilter, from: string, to: string): PresetQuery => ({
   pipeline: pipeline(
     owner.stage,
-    '| WHERE cases.status == "closed"',
-    '| WHERE cases.closed_at >= TO_DATETIME(?) AND cases.closed_at <= TO_DATETIME(?)',
-    '| EVAL duration_ms = DATE_DIFF("ms", cases.created_at, cases.closed_at)',
-    '| STATS mttr_ms = AVG(duration_ms)'
+    `| WHERE cases.status == ${PERSISTED_STATUS.CLOSED}`,
+    '| WHERE cases.closed_at >= ? AND cases.closed_at <= ?',
+    '| STATS mttr_ms = AVG(cases.duration)'
   ),
   params: [...owner.params, from, to],
 });
@@ -107,7 +122,7 @@ export const mttrQuery = (owner: OwnerFilter, from: string, to: string): PresetQ
 export const openedVolumeQuery = (owner: OwnerFilter, from: string, to: string): PresetQuery => ({
   pipeline: pipeline(
     owner.stage,
-    '| WHERE cases.created_at >= TO_DATETIME(?) AND cases.created_at <= TO_DATETIME(?)',
+    '| WHERE cases.created_at >= ? AND cases.created_at <= ?',
     '| EVAL bucket = DATE_TRUNC(1 day, cases.created_at)',
     '| STATS opened = COUNT(*) BY bucket',
     '| SORT bucket ASC',
@@ -119,7 +134,7 @@ export const openedVolumeQuery = (owner: OwnerFilter, from: string, to: string):
 export const closedVolumeQuery = (owner: OwnerFilter, from: string, to: string): PresetQuery => ({
   pipeline: pipeline(
     owner.stage,
-    '| WHERE cases.closed_at >= TO_DATETIME(?) AND cases.closed_at <= TO_DATETIME(?)',
+    '| WHERE cases.closed_at >= ? AND cases.closed_at <= ?',
     '| EVAL bucket = DATE_TRUNC(1 day, cases.closed_at)',
     '| STATS closed = COUNT(*) BY bucket',
     '| SORT bucket ASC',
@@ -131,7 +146,7 @@ export const closedVolumeQuery = (owner: OwnerFilter, from: string, to: string):
 export const topAssigneesQuery = (owner: OwnerFilter): PresetQuery => ({
   pipeline: pipeline(
     owner.stage,
-    '| WHERE cases.status != "closed"',
+    `| WHERE cases.status != ${PERSISTED_STATUS.CLOSED}`,
     '| MV_EXPAND cases.assignees.uid',
     '| WHERE cases.assignees.uid IS NOT NULL',
     '| STATS count = COUNT(*) BY assignee = cases.assignees.uid',

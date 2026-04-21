@@ -262,10 +262,12 @@ describe('getAnalyticsDashboard', () => {
       .mockResolvedValueOnce(volumeResponse('closed', []))
       .mockResolvedValueOnce(assigneesResponse([]))
       .mockResolvedValueOnce(
+        // Server stores status as `short` (OPEN=0, IN_PROGRESS=10, CLOSED=20), so the
+        // ESQL column returns those numeric codes — the mapper translates them to named keys.
         statusResponse([
-          { status: 'open', count: 5 },
-          { status: 'in-progress', count: 2 },
-          { status: 'closed', count: 11 },
+          { status: 0 as unknown as string, count: 5 },
+          { status: 10 as unknown as string, count: 2 },
+          { status: 20 as unknown as string, count: 11 },
         ])
       )
       .mockResolvedValueOnce(severityResponse([]));

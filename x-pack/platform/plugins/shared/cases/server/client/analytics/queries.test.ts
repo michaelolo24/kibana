@@ -49,10 +49,10 @@ describe('analytics query builders', () => {
     const from = '2026-03-01T00:00:00.000Z';
     const to = '2026-03-31T23:59:59.999Z';
 
-    it('openCasesQuery: filters out closed and aggregates count', () => {
+    it('openCasesQuery: filters out closed (numeric 20) and aggregates count', () => {
       const q = openCasesQuery(owner);
       expect(q.pipeline).toContain('WHERE cases.owner IN (?)');
-      expect(q.pipeline).toContain('WHERE cases.status != "closed"');
+      expect(q.pipeline).toContain('WHERE cases.status != 20');
       expect(q.pipeline).toContain('STATS count = COUNT(*)');
       expect(q.params).toEqual(['securitySolution']);
     });
@@ -63,25 +63,23 @@ describe('analytics query builders', () => {
       expect(q.pipeline).toContain('assignee_count IS NULL OR assignee_count == 0');
     });
 
-    it('openedInWindowQuery: wraps time bounds with TO_DATETIME and orders params owner-then-time', () => {
+    it('openedInWindowQuery: bounds on created_at with positional params', () => {
       const q = openedInWindowQuery(owner, from, to);
-      expect(q.pipeline).toContain('cases.created_at >= TO_DATETIME(?)');
-      expect(q.pipeline).toContain('cases.created_at <= TO_DATETIME(?)');
+      expect(q.pipeline).toContain('cases.created_at >= ? AND cases.created_at <= ?');
       expect(q.params).toEqual(['securitySolution', from, to]);
     });
 
-    it('closedInWindowQuery: uses closed_at field with TO_DATETIME bounds', () => {
+    it('closedInWindowQuery: bounds on closed_at with positional params', () => {
       const q = closedInWindowQuery(owner, from, to);
-      expect(q.pipeline).toContain('cases.closed_at >= TO_DATETIME(?)');
-      expect(q.pipeline).toContain('cases.closed_at <= TO_DATETIME(?)');
+      expect(q.pipeline).toContain('cases.closed_at >= ? AND cases.closed_at <= ?');
       expect(q.params).toEqual(['securitySolution', from, to]);
     });
 
-    it('mttrQuery: filters to closed, computes DATE_DIFF in ms, averages', () => {
+    it('mttrQuery: filters to closed (numeric 20) and averages the pre-computed cases.duration', () => {
       const q = mttrQuery(owner, from, to);
-      expect(q.pipeline).toContain('WHERE cases.status == "closed"');
-      expect(q.pipeline).toContain('DATE_DIFF("ms", cases.created_at, cases.closed_at)');
-      expect(q.pipeline).toContain('STATS mttr_ms = AVG(duration_ms)');
+      expect(q.pipeline).toContain('WHERE cases.status == 20');
+      expect(q.pipeline).toContain('cases.closed_at >= ? AND cases.closed_at <= ?');
+      expect(q.pipeline).toContain('STATS mttr_ms = AVG(cases.duration)');
       expect(q.params).toEqual(['securitySolution', from, to]);
     });
 

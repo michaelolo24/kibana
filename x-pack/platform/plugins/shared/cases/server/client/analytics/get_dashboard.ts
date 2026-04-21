@@ -28,6 +28,8 @@ import {
   openCasesQuery,
   openedInWindowQuery,
   openedVolumeQuery,
+  PERSISTED_SEVERITY,
+  PERSISTED_STATUS,
   runEsql,
   severityDistributionQuery,
   statusDistributionQuery,
@@ -252,11 +254,11 @@ const readStatusDistribution = async (
   if (statusIdx === -1 || countIdx === -1) return dist;
 
   for (const row of response.values) {
-    const status = String(row[statusIdx] ?? '');
+    const status = toNumber(row[statusIdx]);
     const count = toNumber(row[countIdx]) ?? 0;
-    if (status === 'open') dist.open = count;
-    else if (status === 'in-progress') dist.inProgress = count;
-    else if (status === 'closed') dist.closed = count;
+    if (status === PERSISTED_STATUS.OPEN) dist.open = count;
+    else if (status === PERSISTED_STATUS.IN_PROGRESS) dist.inProgress = count;
+    else if (status === PERSISTED_STATUS.CLOSED) dist.closed = count;
   }
   return dist;
 };
@@ -272,12 +274,12 @@ const readSeverityDistribution = async (
   if (severityIdx === -1 || countIdx === -1) return dist;
 
   for (const row of response.values) {
-    const severity = String(row[severityIdx] ?? '');
+    const severity = toNumber(row[severityIdx]);
     const count = toNumber(row[countIdx]) ?? 0;
-    if (severity === 'critical') dist.critical = count;
-    else if (severity === 'high') dist.high = count;
-    else if (severity === 'medium') dist.medium = count;
-    else if (severity === 'low') dist.low = count;
+    if (severity === PERSISTED_SEVERITY.CRITICAL) dist.critical = count;
+    else if (severity === PERSISTED_SEVERITY.HIGH) dist.high = count;
+    else if (severity === PERSISTED_SEVERITY.MEDIUM) dist.medium = count;
+    else if (severity === PERSISTED_SEVERITY.LOW) dist.low = count;
   }
   return dist;
 };
