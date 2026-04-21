@@ -21,7 +21,7 @@ import { useGetAnalyticsDashboard } from '../../containers/analytics/use_get_ana
 import { HeroRow } from './hero_row';
 import { PanelWrapper } from './panels/panel_wrapper';
 import { HorizontalBarsPanel } from './panels/horizontal_bars_panel';
-import { VolumePanel } from './panels/volume_panel';
+import { LensVolumePanel } from './lens/lens_volume_panel';
 import * as i18n from './translations';
 
 const DEFAULT_FROM = 'now-30d';
@@ -170,6 +170,7 @@ export const CasesDashboard: React.FC<CasesDashboardProps> = React.memo(({ unass
           isLoading={isLoading}
           onRetry={onRefresh}
           unassignedHref={unassignedHref}
+          timeRange={resolved ?? { from: range.from, to: range.to }}
         />
       )}
     </div>
@@ -182,6 +183,7 @@ interface DashboardBodyProps {
   isLoading: boolean;
   onRetry: () => void;
   unassignedHref: string;
+  timeRange: { from: string; to: string };
 }
 
 const DashboardBody: React.FC<DashboardBodyProps> = ({
@@ -189,6 +191,7 @@ const DashboardBody: React.FC<DashboardBodyProps> = ({
   isLoading,
   onRetry,
   unassignedHref,
+  timeRange,
 }) => {
   const topAssigneesRows = useMemo(
     () =>
@@ -248,20 +251,7 @@ const DashboardBody: React.FC<DashboardBodyProps> = ({
       <EuiSpacer size="l" />
       <EuiFlexGroup gutterSize="l">
         <EuiFlexItem>
-          <PanelWrapper
-            title={i18n.VOLUME_TITLE}
-            subtitle={i18n.WINDOW_DESCRIPTION}
-            isLoading={isLoading}
-            error={data?.volume.error ?? null}
-            onRetry={onRetry}
-            isEmpty={!isLoading && (data?.volume.data?.length ?? 0) === 0}
-            dataTestSubj="cases-dashboard-volume"
-          >
-            <VolumePanel
-              data={data?.volume.data ?? []}
-              dataTestSubj="cases-dashboard-volume-chart"
-            />
-          </PanelWrapper>
+          <LensVolumePanel timeRange={timeRange} />
         </EuiFlexItem>
         <EuiFlexItem>
           <PanelWrapper
