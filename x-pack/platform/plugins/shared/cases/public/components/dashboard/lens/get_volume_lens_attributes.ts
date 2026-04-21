@@ -28,11 +28,6 @@ export interface GetVolumeLensAttributesArgs {
   };
 }
 
-/**
- * Produce a quoted ES|QL string literal list like `"a", "b"`. JSON.stringify on a string
- * escapes embedded quotes and control characters which makes it safe to drop into an ES|QL
- * `IN (…)` clause even if an owner value contained a double quote.
- */
 const esqlStringList = (values: string[]): string =>
   values.map((v) => JSON.stringify(v)).join(', ');
 
@@ -41,18 +36,22 @@ const esqlStringList = (values: string[]): string =>
  * layer B counts by `closed_at` day (series: "Closed"). Both layers share one ad-hoc
  * data view that targets the Cases SO index. The layers render as stacked bars because
  * `preferredSeriesType: 'bar_stacked'`.
+ *
+ * `timeField` on each layer must be a real index field — Lens auto-injects a time filter
+ * on that field when the `timeRange` prop is passed to the embeddable. Using the EVAL'd
+ * `bucket` field here silently returns zero rows because Lens can't resolve it pre-query.
  */
 export const getVolumeLensAttributes = ({
   owner,
   ids,
 }: GetVolumeLensAttributesArgs): TypedLensByValueInput['attributes'] => {
-  const ownerClause = owner.length > 0 ? `| WHERE cases.owner IN (${esqlStringList(owner)})` : '';
+  const ownerClause =
+    owner.length > 0 ? `| WHERE cases.owner IN (${esqlStringList(owner)})` : '';
 
   const openedEsql = [
-    `FROM ${CASES_SO_INDEX} METADATA _id`,
+    `FROM ${CASES_SO_INDEX}`,
     `| WHERE type == "cases"`,
     ownerClause,
-    `| WHERE cases.created_at IS NOT NULL`,
     `| EVAL bucket = DATE_TRUNC(1 day, cases.created_at)`,
     `| STATS opened = COUNT(*) BY bucket`,
     `| SORT bucket ASC`,
@@ -62,10 +61,9 @@ export const getVolumeLensAttributes = ({
     .join(' ');
 
   const closedEsql = [
-    `FROM ${CASES_SO_INDEX} METADATA _id`,
+    `FROM ${CASES_SO_INDEX}`,
     `| WHERE type == "cases"`,
     ownerClause,
-    `| WHERE cases.closed_at IS NOT NULL`,
     `| EVAL bucket = DATE_TRUNC(1 day, cases.closed_at)`,
     `| STATS closed = COUNT(*) BY bucket`,
     `| SORT bucket ASC`,
@@ -118,7 +116,8 @@ export const getVolumeLensAttributes = ({
                   inMetricDimension: true,
                 },
               ],
-              timeField: 'bucket',
+              // Real index field so Lens's timeRange filter resolves correctly.
+              timeField: 'cases.created_at',
             },
             [ids.layerClosed]: {
               index: ids.dataView,
@@ -136,7 +135,7 @@ export const getVolumeLensAttributes = ({
                   inMetricDimension: true,
                 },
               ],
-              timeField: 'bucket',
+              timeField: 'cases.closed_at',
             },
           },
         },
