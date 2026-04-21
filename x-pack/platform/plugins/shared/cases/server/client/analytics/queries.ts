@@ -56,8 +56,11 @@ export interface PresetQuery {
   params: estypes.EsqlESQLParam[];
 }
 
+// Each stage is authored with its own leading `|` — just concatenate them with spaces.
+// Using `' | '` as a join separator would produce `| ... | | ...` (double pipes) since
+// each stage already starts with `|`. ES|QL's parser rejects that with a parsing_exception.
 const pipeline = (ownerStage: string, ...stages: string[]): string =>
-  `${ownerStage}${stages.map((s) => s.trim()).filter(Boolean).join(' | ')}`.trim();
+  `${ownerStage}${stages.map((s) => s.trim()).filter(Boolean).join(' ')}`.trim();
 
 export const openCasesQuery = (owner: OwnerFilter): PresetQuery => ({
   pipeline: pipeline(
