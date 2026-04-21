@@ -12,7 +12,7 @@ import { Routes, Route } from '@kbn/shared-ux-router';
 
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { EuiLoadingSpinner } from '@elastic/eui';
-import { AllCases } from '../all_cases';
+import { CasesHomeTabs } from '../all_cases/cases_home_tabs';
 import { CreateCase } from '../create';
 import { ConfigureCases } from '../configure_cases';
 import type { CasesRoutesProps } from './types';
@@ -74,7 +74,7 @@ const CasesRoutesComponent: React.FC<CasesRoutesProps> = ({
       <ReactQueryDevtools initialIsOpen={false} />
       <Routes>
         <Route strict exact path={basePath}>
-          <AllCases />
+          <CasesHomeTabs />
         </Route>
 
         <Route path={getCreateCasePath(basePath)}>

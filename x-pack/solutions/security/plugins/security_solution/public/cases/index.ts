@@ -13,6 +13,9 @@ export const CASES_FEATURES = {
     enabled: true,
     autoExtract: true,
   },
+  analyticsDashboard: {
+    enabled: true,
+  },
 } as const;
 
 export class Cases {

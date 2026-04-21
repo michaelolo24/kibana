@@ -20,6 +20,8 @@ import type { MetricsSubClient } from './metrics/client';
 import { createMetricsSubClient } from './metrics/client';
 import type { TemplatesSubClient } from './templates/client';
 import { createTemplatesSubClient } from './templates/client';
+import type { AnalyticsSubClient } from './analytics/client';
+import { createAnalyticsSubClient } from './analytics/client';
 
 /**
  * Client wrapper that contains accessor methods for individual entities within the cases system.
@@ -32,6 +34,7 @@ export class CasesClient {
   private readonly _configure: ConfigureSubClient;
   private readonly _metrics: MetricsSubClient;
   private readonly _templates: TemplatesSubClient;
+  private readonly _analytics: AnalyticsSubClient;
 
   constructor(args: CasesClientArgs) {
     this._casesClientInternal = createCasesClientInternal(args);
@@ -41,6 +44,7 @@ export class CasesClient {
     this._configure = createConfigurationSubClient(args, this._casesClientInternal);
     this._metrics = createMetricsSubClient(args, this);
     this._templates = createTemplatesSubClient(args);
+    this._analytics = createAnalyticsSubClient(args);
   }
 
   /**
@@ -83,6 +87,13 @@ export class CasesClient {
    */
   public get metrics() {
     return this._metrics;
+  }
+
+  /**
+   * Retrieves an interface for the ES|QL-powered analytics dashboard.
+   */
+  public get analytics() {
+    return this._analytics;
   }
 }
 

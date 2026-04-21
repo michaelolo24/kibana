@@ -60,6 +60,8 @@ export const casesQueriesKeys = {
   alertFeatureIds: (alertIds: string[]) =>
     [...casesQueriesKeys.alerts, 'features', alertIds] as const,
   configuration: (params: unknown) => [...casesQueriesKeys.all, 'configuration', params] as const,
+  analyticsDashboard: (params: unknown) =>
+    [...casesQueriesKeys.all, 'analytics', 'dashboard', params] as const,
 };
 
 export const casesMutationsKeys = {

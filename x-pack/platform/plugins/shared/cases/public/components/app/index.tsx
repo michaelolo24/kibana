@@ -48,6 +48,7 @@ const CasesAppComponent: React.FC<CasesAppProps> = ({
         features: {
           alerts: { enabled: true, sync: false },
           observables: { enabled: true, autoExtract: false },
+          analyticsDashboard: { enabled: true },
         },
       })}
     </div>

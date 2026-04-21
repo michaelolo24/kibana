@@ -20,6 +20,7 @@ export interface UseCasesFeatures {
   metricsFeatures: SingleCaseMetricsFeature[];
   isObservablesFeatureEnabled: boolean;
   isExtractObservablesEnabled: boolean;
+  isAnalyticsDashboardEnabled: boolean;
 }
 
 export const useCasesFeatures = (): UseCasesFeatures => {
@@ -51,6 +52,7 @@ export const useCasesFeatures = (): UseCasesFeatures => {
       isObservablesFeatureEnabled: !!features.observables.enabled,
       isExtractObservablesEnabled:
         !!features.observables.enabled && !!features.observables.autoExtract,
+      isAnalyticsDashboardEnabled: !!features.analyticsDashboard?.enabled,
     }),
     [
       features.alerts.enabled,
@@ -61,6 +63,7 @@ export const useCasesFeatures = (): UseCasesFeatures => {
       assign,
       features.observables?.enabled,
       features.observables?.autoExtract,
+      features.analyticsDashboard?.enabled,
       hasLicenseWithAtLeastGold,
     ]
   );

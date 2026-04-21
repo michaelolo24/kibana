@@ -18,6 +18,7 @@ import { bulkDeleteFileAttachments } from './internal/bulk_delete_file_attachmen
 import { getCategoriesRoute } from './cases/categories/get_categories';
 import { getCaseMetricRoute } from './internal/get_case_metrics';
 import { getCasesMetricRoute } from './internal/get_cases_metrics';
+import { getAnalyticsDashboardRoute } from './internal/get_analytics_dashboard';
 import { searchCasesRoute } from './internal/search_cases';
 import { replaceCustomFieldRoute } from './internal/replace_custom_field';
 import { postObservableRoute } from './observables/post_observable';
@@ -43,6 +44,7 @@ export const getInternalRoutes = (userProfileService: UserProfileService, config
     getCategoriesRoute,
     getCaseMetricRoute,
     getCasesMetricRoute,
+    getAnalyticsDashboardRoute,
     searchCasesRoute,
     replaceCustomFieldRoute,
     postObservableRoute,

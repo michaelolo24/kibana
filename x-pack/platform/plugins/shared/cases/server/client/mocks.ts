@@ -37,6 +37,7 @@ import type { CasesClientFactory } from './factory';
 import type { MetricsSubClient } from './metrics/client';
 import type { TemplatesSubClient } from './templates/client';
 import type { UserActionsSubClient } from './user_actions/client';
+import type { AnalyticsSubClient } from './analytics/client';
 
 import { CaseSeverity, CaseStatuses } from '../../common/types/domain';
 import { SortFieldCase } from '../../public/containers/types';
@@ -93,6 +94,14 @@ const createMetricsSubClientMock = (): MetricsSubClientMock => {
     getCaseMetrics: jest.fn(),
     getCasesMetrics: jest.fn(),
     getStatusTotalsByType: jest.fn(),
+  });
+};
+
+type AnalyticsSubClientMock = jest.Mocked<AnalyticsSubClient>;
+
+const createAnalyticsSubClientMock = (): AnalyticsSubClientMock => {
+  return lazyObject({
+    getDashboard: jest.fn(),
   });
 };
 
@@ -177,6 +186,7 @@ export const createCasesClientMock = (): CasesClientMock => {
     configure: createConfigureSubClientMock(),
     metrics: createMetricsSubClientMock(),
     templates: createTemplatesSubClientMock(),
+    analytics: createAnalyticsSubClientMock(),
   });
   return client as unknown as CasesClientMock;
 };

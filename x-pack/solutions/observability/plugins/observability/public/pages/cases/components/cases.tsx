@@ -67,6 +67,7 @@ export function Cases({ permissions }: CasesProps) {
           alerts: { sync: false, isExperimental: false },
           observables: { enabled: false },
           events: { enabled: false },
+          analyticsDashboard: { enabled: true },
         }}
         owner={[observabilityFeatureId]}
         permissions={permissions}

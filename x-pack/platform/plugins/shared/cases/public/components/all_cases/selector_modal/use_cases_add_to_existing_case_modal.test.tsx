@@ -90,6 +90,7 @@ describe('use cases add to existing case modal hook', () => {
             metrics: [],
             observables: { enabled: true, autoExtract: true },
             events: { enabled: true },
+            analyticsDashboard: { enabled: false },
           },
           releasePhase: 'ga',
         }}
