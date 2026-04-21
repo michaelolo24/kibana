@@ -44,10 +44,17 @@ export const LensVolumePanel: React.FC<LensVolumePanelProps> = React.memo(
       []
     );
 
-    const attributes = useMemo(
-      () => getVolumeLensAttributes({ owner, ids }),
-      [owner, ids]
-    );
+    const attributes = useMemo(() => {
+      const built = getVolumeLensAttributes({ owner, ids });
+      if (process.env.NODE_ENV !== 'production') {
+        const layers = (built.state?.datasourceStates as { textBased?: { layers?: Record<string, { query?: { esql?: string } }> } })?.textBased?.layers ?? {};
+        Object.entries(layers).forEach(([layerId, layer]) => {
+          // eslint-disable-next-line no-console
+          console.debug(`[cases:dashboard:volume] layer=${layerId.slice(0, 8)} owner=${JSON.stringify(owner)} esql=${layer.query?.esql}`);
+        });
+      }
+      return built;
+    }, [owner, ids]);
 
     if (!lens?.EmbeddableComponent) {
       return null;
