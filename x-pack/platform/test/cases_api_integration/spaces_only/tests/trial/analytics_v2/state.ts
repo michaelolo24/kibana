@@ -54,5 +54,16 @@ export default ({ getService }: FtrProviderContext): void => {
       const afterReset = await getV2State(supertest);
       expect(afterReset.index_exists).to.eql(true);
     });
+
+    it('exposes active_reset on the response shape (null when no reset is in flight)', async () => {
+      // resetV2 in afterEach already drains any in-flight reset, so on
+      // a fresh /state call there should be no active reset task SO.
+      // The field MUST exist (even when null) so consumers can rely on
+      // its presence — adding it as null is the documented "no reset
+      // is happening" signal.
+      const state = await getV2State(supertest);
+      expect(state).to.have.property('active_reset');
+      expect(state.active_reset).to.eql(null);
+    });
   });
 };

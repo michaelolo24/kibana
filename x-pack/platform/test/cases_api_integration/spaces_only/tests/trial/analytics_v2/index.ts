@@ -7,7 +7,7 @@
 
 import type { FtrProviderContext } from '../../../../common/ftr_provider_context';
 import { createSpaces, deleteSpaces } from '../../../../common/lib/authentication';
-import { waitForCaseIndexExists } from './helpers';
+import { waitForActivityIndexExists, waitForCaseIndexExists } from './helpers';
 
 /**
  * Cases-analytics v2 API integration suite.
@@ -32,10 +32,14 @@ export default ({ loadTestFile, getService }: FtrProviderContext): void => {
 
     before(async () => {
       await createSpaces(getService);
-      // v2's plugin start runs `ensureCaseIndex` asynchronously after Kibana
-      // boots. Wait for `.cases` to exist before any test fires, so the
-      // first test isn't racing the bootstrap.
-      await waitForCaseIndexExists(getService('es'));
+      // v2's plugin start runs `ensure*Index` asynchronously after Kibana
+      // boots. Wait for both `.cases` and `.cases-activity` to exist
+      // before any test fires, so the first test isn't racing the
+      // bootstrap.
+      await Promise.all([
+        waitForCaseIndexExists(getService('es')),
+        waitForActivityIndexExists(getService('es')),
+      ]);
     });
 
     after(async () => {
@@ -47,5 +51,6 @@ export default ({ loadTestFile, getService }: FtrProviderContext): void => {
     loadTestFile(require.resolve('./reconcile'));
     loadTestFile(require.resolve('./reset'));
     loadTestFile(require.resolve('./per_space_data_views'));
+    loadTestFile(require.resolve('./activity'));
   });
 };
