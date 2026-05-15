@@ -6,7 +6,21 @@
  */
 
 import type { DataViewSpec } from '@kbn/data-views-plugin/common';
-import { CASE_INDEX_NAME } from '../constants';
+import { ACTIVITY_INDEX_NAME, CASE_INDEX_NAME } from '../constants';
+
+/**
+ * Index pattern fed to the data view's `title`. Comma-separated index
+ * list — the data views API treats each comma-separated token as an
+ * index pattern, so a single managed view spans both `.cases` and
+ * `.cases-activity` (and any future analytics index added to this
+ * list). Cross-index queries via ES|QL `LOOKUP JOIN` work transparently
+ * against the same view.
+ *
+ * Order matters for documentation only (the data view doesn't care);
+ * cases comes first because it's the dimension table that the activity
+ * surface joins back to.
+ */
+export const CASE_ANALYTICS_DATA_VIEW_TITLE = `${CASE_INDEX_NAME},${ACTIVITY_INDEX_NAME}`;
 
 /**
  * Shared prefix for every managed Cases data view id. One data view exists
@@ -57,7 +71,7 @@ const CASE_DATA_VIEW_NAME = 'Case Analytics';
 export const buildCaseDataViewSpec = (spaceId: string): DataViewSpec => ({
   id: getCaseDataViewId(spaceId),
   name: CASE_DATA_VIEW_NAME,
-  title: CASE_INDEX_NAME,
+  title: CASE_ANALYTICS_DATA_VIEW_TITLE,
   timeFieldName: '@timestamp',
   allowNoIndex: true,
   managed: true,

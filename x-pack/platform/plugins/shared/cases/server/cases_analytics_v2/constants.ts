@@ -12,13 +12,17 @@
  *
  * - `.cases`             — current state of every case. `index.mode: lookup`
  *                          so downstream surfaces can `LOOKUP JOIN` from ES|QL.
- * - `.cases-activity`    — append-only audit of case events. Future PR.
+ * - `.cases-activity`    — append-only audit of case events (mirror of the
+ *                          `cases-user-actions` SO). Default index mode
+ *                          (fact table) — joined to `.cases` via ES|QL.
  * - `.cases-attachments` — denormalized comments + attachments. Future PR.
  *
- * Index name mirrors the saved-object type (`cases` SO ↔ `.cases` index) so
- * an administrator reading `_cat/indices` can map back to the source data.
+ * Index name mirrors the saved-object type (`cases` SO ↔ `.cases` index;
+ * `cases-user-actions` SO ↔ `.cases-activity` index) so an administrator
+ * reading `_cat/indices` can map back to the source data.
  */
 export const CASE_INDEX_NAME = '.cases';
+export const ACTIVITY_INDEX_NAME = '.cases-activity';
 
 /**
  * Administrator route URLs. All under `/internal/cases/_analyticsV2/*` —
