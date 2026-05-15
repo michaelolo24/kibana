@@ -52,6 +52,20 @@ export interface RunReconciliationDeps {
    * later, an administrator hits `/reset`, which clears task state.
    */
   lastRunAt: string | undefined;
+  /**
+   * Optional sleep between pages, in milliseconds. Default `0` (yield via
+   * `setImmediate` only — see the inter-page yield comment below).
+   *
+   * Plumbed through from `xpack.cases.analyticsV2.resetPageDelayMs` and
+   * applied **only when this runner is invoked from the reset task**.
+   * The periodic-task code path leaves it at `0` because the periodic
+   * tick is `O(delta)` — bounded, fast, no need to throttle.
+   *
+   * Operators on shared / capacity-constrained clusters set this above
+   * 0 so the post-reset backfill is a gentler trickle into ES instead of
+   * a continuous full-throttle stream for the duration of the walk.
+   */
+  pageDelayMs?: number;
 }
 
 export interface RunReconciliationResult {
@@ -85,6 +99,7 @@ export async function runReconciliation({
   writer,
   logger,
   lastRunAt,
+  pageDelayMs = 0,
 }: RunReconciliationDeps): Promise<RunReconciliationResult> {
   // Capture the wall-clock at tick start. We persist this as the new cursor on
   // a successful drain so the next tick sees only cases updated *after* this
@@ -214,6 +229,32 @@ export async function runReconciliation({
       // Partial page = end of the result set; no point in another round-trip.
       if (page.saved_objects.length < PAGE_SIZE) {
         break;
+      }
+
+      // Yield to the event loop between pages. Without this, a long walk
+      // (post-`/reset` backfill, or any tick with thousands of cases) ends
+      // up running back-to-back synchronous CPU bursts (doc-build +
+      // operations-array + ES client NDJSON serialization) inside the
+      // same handler / task-runner window. Each await on `find` /
+      // `bulkUpsert` only yields for the duration of the I/O — when the
+      // I/O finishes fast (warm cache, healthy cluster) the next page's
+      // CPU runs immediately, accumulating a single long ELU span that
+      // trips Kibana's `Event loop utilization exceeded threshold`
+      // warning and starves concurrent requests.
+      //
+      // Two modes:
+      //   - `pageDelayMs == 0` (default; periodic-task path): yield via
+      //     `setImmediate`. Schedules onto the macrotask queue AFTER
+      //     pending I/O, so any other request waiting for an I/O reply
+      //     gets serviced before our next page begins. Sub-millisecond.
+      //   - `pageDelayMs > 0` (reset-task path with operator-tuned
+      //     throttle): sleep for the configured duration. Trades wall-
+      //     clock walk time for reduced ES indexing pressure during a
+      //     long backfill. See `xpack.cases.analyticsV2.resetPageDelayMs`.
+      if (pageDelayMs > 0) {
+        await new Promise<void>((resolve) => setTimeout(resolve, pageDelayMs));
+      } else {
+        await new Promise<void>((resolve) => setImmediate(resolve));
       }
     }
   } finally {

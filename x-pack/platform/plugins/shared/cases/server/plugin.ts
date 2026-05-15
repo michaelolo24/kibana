@@ -21,7 +21,12 @@ import type { LensServerPluginSetup } from '@kbn/lens-plugin/server';
 
 import { DEFAULT_SPACE_ID } from '@kbn/spaces-plugin/common';
 import type { IUsageCounter } from '@kbn/usage-collection-plugin/server/usage_counters/usage_counter';
-import { APP_ID, CASE_SAVED_OBJECT, CASE_TEMPLATE_SAVED_OBJECT } from '../common/constants';
+import {
+  APP_ID,
+  CASE_SAVED_OBJECT,
+  CASE_TEMPLATE_SAVED_OBJECT,
+  CASE_USER_ACTION_SAVED_OBJECT,
+} from '../common/constants';
 
 import type { CasesClient } from './client';
 import type {
@@ -58,6 +63,7 @@ import { createCasesAnalyticsIndexes, registerCasesAnalyticsIndexesTasks } from 
 import { scheduleCAISchedulerTask } from './cases_analytics/tasks/scheduler_task';
 import { CasesAnalyticsV2Service, V2_NOOP_DATA_VIEW_REFRESHER } from './cases_analytics_v2';
 import { V2_NOOP_WRITER } from './cases_analytics_v2/writer';
+import { V2_NOOP_ACTIVITY_WRITER } from './cases_analytics_v2/writer/activity';
 import { CasesEventBus } from './events/event_bus';
 import { registerCaseWorkflowSteps } from './workflows';
 import { registerCaseWorkflowTriggers } from './workflows/triggers';
@@ -142,6 +148,14 @@ export class CasePlugin
       // this to true in `kibana.yml` when they need the debug surface
       // (mapping migrations, sustained writer failures, dev iteration).
       enableDebugMode: this.caseConfig.analyticsV2.enable_debug_mode,
+      // Reset-task tunables. Threaded through to the
+      // `cases.analyticsV2.fullReset` task type's `timeout` and to the
+      // reconciliation runners' inter-page sleep when invoked from the
+      // reset task. Both have safe defaults; large-tenant operators
+      // raise them in `kibana.yml` to keep the post-`/reset` backfill
+      // within budget without blocking the HTTP request.
+      resetTaskTimeoutMinutes: this.caseConfig.analyticsV2.resetTaskTimeoutMinutes,
+      resetPageDelayMs: this.caseConfig.analyticsV2.resetPageDelayMs,
     });
     this.casesAnalyticsV2Service.setup({ core, taskManager: plugins.taskManager });
 
@@ -320,8 +334,11 @@ export class CasePlugin
             'Skipping v2 start.'
         );
       } else {
-        // The internal repo serves three consumers:
-        //  - The reconciliation runner walks `cases` SOs.
+        // The internal repo serves four consumers:
+        //  - The cases-surface reconciliation runner walks `cases` SOs.
+        //  - The activity-surface reconciliation runner walks
+        //    `cases-user-actions` SOs (created-only, no `updated_at`
+        //    filter — see `reconciliation/activity_runner.ts`).
         //  - The data view sub-service reads `cases-templates` SOs per-space
         //    to derive runtime fields.
         //  - The `/reset` admin route deletes per-space `index-pattern` SOs
@@ -330,12 +347,13 @@ export class CasePlugin
         //    so deleting a data view in space `analytics-1` from a `/reset`
         //    request that arrived in `default` 404s on the existence check
         //    (even with `force: true`).
-        // `cases` and `cases-templates` are hidden, so they must be opted in
+        // All three cases SOs are hidden, so they must be opted in
         // explicitly. `index-pattern` is a globally-registered SO type
         // (data-views plugin); opting it in here grants the internal client
         // the cross-namespace delete it needs.
         const v2InternalRepository = core.savedObjects.createInternalRepository([
           CASE_SAVED_OBJECT,
+          CASE_USER_ACTION_SAVED_OBJECT,
           CASE_TEMPLATE_SAVED_OBJECT,
           'index-pattern',
         ]);
@@ -409,6 +427,11 @@ export class CasePlugin
       // here. But test harnesses that exercise `start()` in isolation get a
       // no-op writer instead of a runtime crash.
       analyticsV2Writer: this.casesAnalyticsV2Service?.getWriter() ?? V2_NOOP_WRITER,
+      // Activity surface companion. Same lifetime + same defensive fallback
+      // as `analyticsV2Writer`. Captured by the user-actions service via
+      // the cases client factory.
+      analyticsV2ActivityWriter:
+        this.casesAnalyticsV2Service?.getActivityWriter() ?? V2_NOOP_ACTIVITY_WRITER,
       // Companion data-view refresher proxy. Same lifetime + same defensive
       // fallback as `analyticsV2Writer`. Captured by the templates service
       // through the cases client factory and called fire-and-forget after

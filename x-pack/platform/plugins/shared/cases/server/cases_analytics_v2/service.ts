@@ -19,13 +19,20 @@ import type {
 } from '@kbn/task-manager-plugin/server';
 import { CasesAnalyticsV2DataViewService } from './data_view/service';
 import { ensureCaseIndex } from './ensure_indices/case';
+import { ensureActivityIndex } from './ensure_indices/activity';
 import { registerReconciliationTask, scheduleReconciliationTask } from './reconciliation';
+import { registerResetTask } from './reconciliation/reset_task';
 import { registerCasesAnalyticsV2Routes } from './routes';
 import {
   CasesAnalyticsV2Writer,
   V2_NOOP_WRITER,
   type CasesAnalyticsV2WriterContract,
 } from './writer';
+import {
+  CasesActivityV2Writer,
+  V2_NOOP_ACTIVITY_WRITER,
+  type CasesActivityV2WriterContract,
+} from './writer/activity';
 
 interface CasesAnalyticsV2ServiceDeps {
   logger: Logger;
@@ -48,6 +55,19 @@ interface CasesAnalyticsV2ServiceDeps {
    * itself is on; a future Case Settings page consumes it.
    */
   enableDebugMode: boolean;
+  /**
+   * Resolved value of `xpack.cases.analyticsV2.resetTaskTimeoutMinutes`.
+   * Threaded into the `cases.analyticsV2.fullReset` task type's `timeout`
+   * at registration so larger tenants can raise it via `kibana.yml`
+   * without code changes. See config schema for tuning guidance.
+   */
+  resetTaskTimeoutMinutes: number;
+  /**
+   * Resolved value of `xpack.cases.analyticsV2.resetPageDelayMs`. Passed
+   * to the cases / activity reconciliation runners **only when invoked
+   * from the reset task** — periodic ticks always use 0 (no throttle).
+   */
+  resetPageDelayMs: number;
 }
 
 /**
@@ -129,12 +149,19 @@ export class CasesAnalyticsV2Service {
   private readonly enabled: boolean;
   private readonly reconciliationIntervalMinutes: number;
   private readonly enableDebugMode: boolean;
+  private readonly resetTaskTimeoutMinutes: number;
+  private readonly resetPageDelayMs: number;
   /**
    * Holds the active writer. Starts as `V2_NOOP_WRITER` so calls before
    * `start()` (or when v2 is disabled) silently no-op. Replaced with a real
    * `CasesAnalyticsV2Writer` instance once start runs.
    */
   private writer: CasesAnalyticsV2WriterContract = V2_NOOP_WRITER;
+  /**
+   * Same lifecycle as `writer`, for the activity surface. Starts no-op and
+   * is swapped in `start()`.
+   */
+  private activityWriter: CasesActivityV2WriterContract = V2_NOOP_ACTIVITY_WRITER;
   /**
    * Stable proxy returned to consumers. Methods delegate to the current
    * `this.writer` at call time, so swapping `writer` from no-op to real after
@@ -146,6 +173,17 @@ export class CasesAnalyticsV2Service {
     bulkUpsertCases: (sos) => this.writer.bulkUpsertCases(sos),
     bulkDeleteCases: (ids) => this.writer.bulkDeleteCases(ids),
     bulkUpsertCasesAwait: (sos) => this.writer.bulkUpsertCasesAwait(sos),
+  };
+  /**
+   * Stable proxy for the activity writer. Same lifecycle and semantics as
+   * `writerProxy` — the user-actions service captures this once at factory
+   * time, and the proxy delegates to whichever implementation is current.
+   */
+  private readonly activityWriterProxy: CasesActivityV2WriterContract = {
+    upsertAction: (so) => this.activityWriter.upsertAction(so),
+    bulkUpsertActions: (sos) => this.activityWriter.bulkUpsertActions(sos),
+    bulkDeleteActionsByCaseIds: (ids) => this.activityWriter.bulkDeleteActionsByCaseIds(ids),
+    bulkUpsertActionsAwait: (sos) => this.activityWriter.bulkUpsertActionsAwait(sos),
   };
   /**
    * Stable refresher returned to consumers. Captured by the cases client
@@ -186,6 +224,8 @@ export class CasesAnalyticsV2Service {
     this.enabled = deps.enabled;
     this.reconciliationIntervalMinutes = deps.reconciliationIntervalMinutes;
     this.enableDebugMode = deps.enableDebugMode;
+    this.resetTaskTimeoutMinutes = deps.resetTaskTimeoutMinutes;
+    this.resetPageDelayMs = deps.resetPageDelayMs;
   }
 
   /**
@@ -221,6 +261,47 @@ export class CasesAnalyticsV2Service {
         return {
           savedObjectsClient: this.internalSavedObjectsClient,
           writer: this.writerProxy,
+          activityWriter: this.activityWriterProxy,
+        };
+      },
+    });
+
+    // Register the one-shot reset task type. Scheduling an instance
+    // happens on demand from the `/reset` route — this just makes the
+    // task type known to Task Manager so future schedule calls succeed.
+    // The TM start contract isn't available yet (we're in setup) — the
+    // closure resolves it from `this.taskManager` at task-run time, by
+    // which point start has populated it. Same pattern as the writer +
+    // SO client late-bindings: setup-time captures, start-time populated.
+    registerResetTask({
+      taskManager: deps.taskManager,
+      logger: this.logger,
+      timeoutMinutes: this.resetTaskTimeoutMinutes,
+      pageDelayMs: this.resetPageDelayMs,
+      reconciliationIntervalMinutes: this.reconciliationIntervalMinutes,
+      getRunnerDeps: async () => {
+        if (
+          this.internalSavedObjectsClient == null ||
+          this.taskManager == null ||
+          this.writer === V2_NOOP_WRITER ||
+          this.activityWriter === V2_NOOP_ACTIVITY_WRITER
+        ) {
+          // The reset task SHOULD never be scheduled before start
+          // completes (the route handler gates on the same writers
+          // being non-noop), but if it somehow does — e.g. an existing
+          // task SO from a previous boot fires before start has
+          // finished here — surface it as a clear failure rather than
+          // silently walking against noop writers and reporting
+          // success with zero actual ES writes.
+          throw new Error(
+            'cases-analyticsV2: reset task fired before service start completed; writers, SO client, or task manager are not yet available'
+          );
+        }
+        return {
+          savedObjectsClient: this.internalSavedObjectsClient,
+          writer: this.writerProxy,
+          activityWriter: this.activityWriterProxy,
+          taskManager: this.taskManager,
         };
       },
     });
@@ -249,10 +330,11 @@ export class CasesAnalyticsV2Service {
       // of silently walking against a noop writer and reporting
       // "processed=N" with zero actual ES writes.
       getWriter: () => (this.writer === V2_NOOP_WRITER ? null : this.writerProxy),
+      getActivityWriter: () =>
+        this.activityWriter === V2_NOOP_ACTIVITY_WRITER ? null : this.activityWriterProxy,
       clearDataViewBootstrapCache: () => this.dataViewService?.clearBootstrapCache(),
       enabled: this.enabled,
       enableDebugMode: this.enableDebugMode,
-      reconciliationIntervalMinutes: this.reconciliationIntervalMinutes,
     });
   }
 
@@ -276,12 +358,23 @@ export class CasesAnalyticsV2Service {
     }
     this.logger.info('cases-analytics v2 starting');
 
-    // Bootstrap the cases index. Idempotent; safe to run on every node start.
-    await ensureCaseIndex({ esClient: deps.esClient, logger: this.logger });
+    // Bootstrap the cases + activity indices. Idempotent and independent;
+    // running them in parallel halves first-start latency on a fresh
+    // cluster. Errors from each are logged inside `ensure*Index` and never
+    // thrown — the cases plugin must keep starting even if one of the
+    // analytics indices has trouble.
+    await Promise.all([
+      ensureCaseIndex({ esClient: deps.esClient, logger: this.logger }),
+      ensureActivityIndex({ esClient: deps.esClient, logger: this.logger }),
+    ]);
 
-    // Swap the no-op writer for the real one. After this point, every call
-    // through `writerProxy` reaches Elasticsearch.
+    // Swap the no-op writers for the real ones. After this point, every call
+    // through `writerProxy` / `activityWriterProxy` reaches Elasticsearch.
     this.writer = new CasesAnalyticsV2Writer({
+      esClient: deps.esClient,
+      logger: this.logger,
+    });
+    this.activityWriter = new CasesActivityV2Writer({
       esClient: deps.esClient,
       logger: this.logger,
     });
@@ -328,6 +421,14 @@ export class CasesAnalyticsV2Service {
    */
   public getWriter(): CasesAnalyticsV2WriterContract {
     return this.writerProxy;
+  }
+
+  /**
+   * Stable activity writer reference for the user-actions SO service.
+   * Same lifecycle and semantics as `getWriter()`.
+   */
+  public getActivityWriter(): CasesActivityV2WriterContract {
+    return this.activityWriterProxy;
   }
 
   /**
