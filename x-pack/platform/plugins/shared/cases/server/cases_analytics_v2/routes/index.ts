@@ -36,6 +36,16 @@ import type { CasesActivityV2WriterContract } from '../writer/activity';
  * `status: 'failed'` is the operator's signal that the last reset
  * threw on both surfaces; the periodic task continues to fill in
  * the gap regardless.
+ *
+ * `state` evolves over the task's lifetime:
+ *   - At schedule time (before any throttled write): `{}`.
+ *   - During the walk: `phase` + `cases_processed` /
+ *     `activity_processed` + `started_at` populate progressively
+ *     via the reset task's wall-clock-throttled progress writer.
+ *   - At task completion: full `ResetTaskState` written by
+ *     Task Manager from the runner's return value, including
+ *     `cases_cursor`, `activity_cursor`, `completed_at`, and any
+ *     per-surface error messages.
  */
 interface ActiveResetSnapshot {
   task_id: string;
@@ -43,8 +53,7 @@ interface ActiveResetSnapshot {
   scheduled_at: string;
   /** Most recent attempt count from Task Manager. */
   attempts: number;
-  /** Empty `{}` while pending, populated after the runner returns. */
-  state: ResetTaskState | Record<string, never>;
+  state: Partial<ResetTaskState> | Record<string, never>;
 }
 
 const DATA_VIEW_SO_TYPE = 'index-pattern';
@@ -234,10 +243,14 @@ export const registerCasesAnalyticsV2Routes = ({
             // `Record<string, unknown>` at the type layer; we know the
             // shape because we own the task type's runner. While the
             // task is `idle` (just scheduled), `state` is `{}`; while
-            // `running`, also `{}` (Task Manager doesn't surface mid-
-            // run state); after a partial-success return, it's a fully
-            // populated `ResetTaskState`.
-            state: (resetTask.state ?? {}) as ResetTaskState | Record<string, never>,
+            // `running`, the reset task's wall-clock-throttled
+            // progress writer pushes partial state every ~30s
+            // (`phase`, `cases_processed`, `activity_processed`,
+            // `started_at`); after the runner returns, it's a fully
+            // populated `ResetTaskState` with `phase: 'completed'`
+            // (or the partial mid-walk state on a thrown total
+            // failure).
+            state: (resetTask.state ?? {}) as Partial<ResetTaskState> | Record<string, never>,
           };
         }
       }

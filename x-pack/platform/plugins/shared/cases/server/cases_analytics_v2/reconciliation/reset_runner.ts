@@ -50,6 +50,19 @@ export interface RunFullResetDeps {
    * full backfill.
    */
   pageDelayMs: number;
+  /**
+   * Optional progress callback fired after each runner page completes.
+   * `phase` discriminates which surface is currently being walked so
+   * the caller (the reset task) can write per-surface live counts into
+   * the task SO. `processed` is the cumulative count for the current
+   * surface — the caller writes the latest value into its `phase`-
+   * prefixed state field without per-page bookkeeping.
+   *
+   * Synchronous + non-blocking. Callers throttle their downstream I/O
+   * (e.g. `bulkUpdateState`) themselves; this function does NOT
+   * throttle on their behalf so per-page semantics stay obvious.
+   */
+  onProgress?: (info: { phase: 'cases' | 'activity'; processed: number }) => void;
   logger: Logger;
 }
 
@@ -113,6 +126,7 @@ export async function runFullReset({
   taskManager,
   intervalMinutes,
   pageDelayMs,
+  onProgress,
   logger,
 }: RunFullResetDeps): Promise<RunFullResetResult> {
   // Cases first, then activity. Same ordering rationale as the periodic
@@ -128,6 +142,10 @@ export async function runFullReset({
       logger,
       lastRunAt: undefined,
       pageDelayMs,
+      // Synthesize per-surface phase by wrapping the runner's
+      // surface-agnostic callback. Keeps the runners themselves
+      // free of any "which surface am I" awareness.
+      onPageComplete: ({ processed }) => onProgress?.({ phase: 'cases', processed }),
     });
   } catch (err) {
     casesError = err;
@@ -147,6 +165,7 @@ export async function runFullReset({
       logger,
       lastRunAt: undefined,
       pageDelayMs,
+      onPageComplete: ({ processed }) => onProgress?.({ phase: 'activity', processed }),
     });
   } catch (err) {
     activityError = err;

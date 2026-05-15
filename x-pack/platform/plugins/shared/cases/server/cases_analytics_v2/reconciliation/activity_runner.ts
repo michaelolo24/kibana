@@ -61,6 +61,13 @@ export interface RunActivityReconciliationDeps {
    * walk's wall-clock than on the cases walk.
    */
   pageDelayMs?: number;
+  /**
+   * Optional progress callback. Same shape and semantics as the cases
+   * runner's `onPageComplete` — see its docs. Fired after each page's
+   * bulk-upsert with the cumulative `processed` count. Synchronous;
+   * callers do their own throttling for any downstream I/O.
+   */
+  onPageComplete?: (info: { processed: number }) => void;
 }
 
 export interface RunActivityReconciliationResult {
@@ -96,6 +103,7 @@ export async function runActivityReconciliation({
   logger,
   lastRunAt,
   pageDelayMs = 0,
+  onPageComplete,
 }: RunActivityReconciliationDeps): Promise<RunActivityReconciliationResult> {
   // Capture the wall-clock at tick start. Persisted as the new cursor on
   // a successful drain so the next tick sees only user actions created
@@ -161,6 +169,10 @@ export async function runActivityReconciliation({
         const space = so.namespaces?.[0] ?? 'default';
         processedBySpace.set(space, (processedBySpace.get(space) ?? 0) + 1);
       }
+
+      // Live progress signal — see the matching call in `runner.ts`
+      // for the rationale (post-upsert, post-counts, fire-and-forget).
+      onPageComplete?.({ processed });
 
       searchAfter = getLastSort(page.saved_objects);
 

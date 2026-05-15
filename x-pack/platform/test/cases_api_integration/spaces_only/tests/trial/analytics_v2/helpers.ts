@@ -323,8 +323,29 @@ export interface V2StateBody {
     status: string;
     scheduled_at: string;
     attempts: number;
-    state: Record<string, unknown>;
+    /**
+     * Mirrors `ResetTaskState` in `reset_task.ts`. Updated live by
+     * the reset task's wall-clock-throttled progress writer (every
+     * ~30s during the walk) — `phase`, `cases_processed`,
+     * `activity_processed`, `started_at` populate progressively.
+     * `cases_cursor`, `activity_cursor`, `completed_at`,
+     * `cases_error`, `activity_error` only land in the final write
+     * at task completion.
+     */
+    state: ActiveResetState;
   } | null;
+}
+
+export interface ActiveResetState {
+  phase?: 'cases' | 'activity' | 'completed' | null;
+  cases_processed?: number | null;
+  activity_processed?: number | null;
+  cases_cursor?: string | null;
+  activity_cursor?: string | null;
+  started_at?: string;
+  completed_at?: string | null;
+  cases_error?: string | null;
+  activity_error?: string | null;
 }
 
 /**

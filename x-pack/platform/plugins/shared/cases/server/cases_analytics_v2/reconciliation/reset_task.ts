@@ -49,36 +49,76 @@ export const RESET_TASK_TYPE = 'cases.analyticsV2.fullReset';
 export const RESET_TASK_ID = 'cases-analyticsV2-reset';
 
 /**
- * State shape persisted to the reset task SO. The task runner returns
- * this from `run()` so Task Manager writes it to `task.state`. `/state`
- * reads it back to surface progress + outcome.
+ * State shape persisted to the reset task SO. Two write moments
+ * shape this:
+ *   1. **Mid-run progress writes.** A wall-clock-throttled wrapper
+ *      around `taskManager.bulkUpdateState` pushes the partial fields
+ *      below (`phase`, `cases_processed`, `activity_processed`,
+ *      `started_at`) every ~30s during the walk so `/state.active_reset.state`
+ *      reflects live progress. `cases_cursor`, `activity_cursor`,
+ *      `completed_at`, `cases_error`, `activity_error` stay at their
+ *      sentinel values until the run completes.
+ *   2. **Final return write.** The runner returns the fully-populated
+ *      shape at the end of `run()`; Task Manager writes it to the SO
+ *      and (on success) auto-removes the SO moments later. The brief
+ *      window between final write and SO removal is when consumers
+ *      polling `/state` see the complete final state.
  *
- * `null` walk results indicate the corresponding surface threw mid-walk
- * (per-surface failure isolation in `runFullReset`); the route layer
- * surfaces this as a partial-success state.
+ * On total failure (both surfaces threw) the runner THROWS instead of
+ * returning, which preserves the SO with the most-recent throttled
+ * write — so `phase`, `cases_processed`, and `activity_processed`
+ * still reflect how far the walk got before death.
  */
 export interface ResetTaskState {
-  /** Cases-surface processed count, or null if the surface failed. */
-  cases_processed: number | null;
-  /** Activity-surface processed count, or null if the surface failed. */
-  activity_processed: number | null;
-  /** Periodic-task cursors that the runner seeded after both walks. */
-  cases_cursor: string;
-  activity_cursor: string;
-  /** Wall-clock at task-runner entry, for elapsed-time computation. */
-  started_at: string;
-  /** Wall-clock at task-runner exit. */
-  completed_at: string;
   /**
-   * Per-surface error message if either walk threw. `null` on success.
-   * The runner doesn't propagate the exception (per-surface isolation),
-   * so the only way to surface the failure mode in `/state` is to
-   * stash the message here.
+   * Which surface is currently being walked. Mid-run: `'cases'` or
+   * `'activity'`. Final-state write (success or partial-success):
+   * `'completed'`. The throttled write writes whichever value the
+   * runner most recently emitted — so on a total failure the SO is
+   * preserved with the surface that died.
+   */
+  phase: 'cases' | 'activity' | 'completed' | null;
+  /**
+   * Cumulative cases-surface processed count. Updates live during the
+   * cases walk via the throttled progress writer; frozen at the final
+   * value once activity walk starts. `null` until the first cases
+   * page completes (initial throttled write may happen before any
+   * page completes).
+   */
+  cases_processed: number | null;
+  /** Cumulative activity-surface processed count. Same lifecycle as `cases_processed`. */
+  activity_processed: number | null;
+  /** Periodic-task cursors that the runner seeded after both walks. Final-write only. */
+  cases_cursor: string | null;
+  activity_cursor: string | null;
+  /** Wall-clock at task-runner entry. Set in the initial throttled write. */
+  started_at: string;
+  /** Wall-clock at task-runner exit. Final-write only; null mid-run. */
+  completed_at: string | null;
+  /**
+   * Per-surface error message if either walk threw. Final-write only.
+   * The runner's per-surface failure isolation captures these in the
+   * result rather than propagating; we stash the message here so
+   * `/state` consumers can distinguish "succeeded" from "succeeded
+   * with a partial-failure on surface X" without parsing logs.
    */
   cases_error: string | null;
   activity_error: string | null;
   [key: string]: unknown;
 }
+
+/**
+ * Wall-clock interval between throttled progress writes during the
+ * reset walk. 30 seconds is a deliberate compromise:
+ *   - Faster (e.g. 5s): better operator UX (numbers update visibly
+ *     while watching) but ~6× more SO writes against
+ *     `.kibana_task_manager`. At 1500 pages/sec sustained and a 30s
+ *     window that's only 1 write per ~45,000 page completions —
+ *     negligible.
+ *   - Slower (e.g. 5m): meaningful SO-write savings but operators see
+ *     stale numbers for minutes at a time, which feels broken.
+ */
+const PROGRESS_WRITE_INTERVAL_MS = 30_000;
 
 interface RegisterResetTaskArgs {
   taskManager: TaskManagerSetupContract;
@@ -185,64 +225,135 @@ export function registerResetTask({
           //     operator's signal to re-run `/reset`)
           const startedAt = new Date().toISOString();
           const deps = await getRunnerDeps();
-          const result = await runFullReset({
-            savedObjectsClient: deps.savedObjectsClient,
-            writer: deps.writer,
-            activityWriter: deps.activityWriter,
-            taskManager: deps.taskManager,
-            intervalMinutes: reconciliationIntervalMinutes,
-            pageDelayMs,
-            logger,
-          });
 
-          const completedAt = new Date().toISOString();
-          const casesErrorMessage =
-            result.casesError != null
-              ? result.casesError instanceof Error
-                ? result.casesError.message
-                : String(result.casesError)
-              : null;
-          const activityErrorMessage =
-            result.activityError != null
-              ? result.activityError instanceof Error
-                ? result.activityError.message
-                : String(result.activityError)
-              : null;
-
-          const state: ResetTaskState = {
-            cases_processed: result.cases?.processed ?? null,
-            activity_processed: result.activity?.processed ?? null,
-            cases_cursor: result.casesCursor,
-            activity_cursor: result.activityCursor,
+          // Live progress state. Updated synchronously by the
+          // `onProgress` callback wired below; periodically flushed
+          // to the task SO by the throttled writer. The throttled
+          // writer reads from this same reference (no copy) so each
+          // flush captures whatever the most recent page reported.
+          const liveState: ResetTaskState = {
+            phase: 'cases',
+            cases_processed: null,
+            activity_processed: null,
+            cases_cursor: null,
+            activity_cursor: null,
             started_at: startedAt,
-            completed_at: completedAt,
-            cases_error: casesErrorMessage,
-            activity_error: activityErrorMessage,
+            completed_at: null,
+            cases_error: null,
+            activity_error: null,
           };
 
-          // Both surfaces failed → throw so the SO survives with
-          // `status: 'failed'` and `state` populated. Task Manager
-          // also treats this as a task-level failure for metrics
-          // purposes, which is correct: nothing useful happened.
-          //
-          // We can't actually persist `state` on a thrown failure
-          // (Task Manager only writes the state from the returned
-          // value), so we encode the per-surface error messages in
-          // the thrown error's message — the operator gets enough
-          // detail from `/state.active_reset.error` (which Task
-          // Manager populates from a failed task's recorded error)
-          // to know which surface(s) failed and why.
-          if (result.casesError != null && result.activityError != null) {
-            throw new Error(
-              `cases-analyticsV2: full reset failed on both surfaces. cases: ${casesErrorMessage}. activity: ${activityErrorMessage}`
-            );
-          }
+          const flushProgress = async () => {
+            try {
+              await deps.taskManager.bulkUpdateState([RESET_TASK_ID], () => ({ ...liveState }));
+            } catch (err) {
+              // Common transient causes:
+              //   - 404: the SO was removed by a concurrent `/reset`
+              //     call (latest-wins). The runner is already a
+              //     dead walking — Task Manager will stop claiming
+              //     it on the next poll. Just log and move on.
+              //   - 409 (version conflict): another node updated
+                //     the SO between our read and write. Next throttle
+              //     cycle re-tries with the latest state.
+              // Either way: progress writes are advisory, not
+              // load-bearing. Don't poison the walk on a write
+              // failure.
+              logger.debug(
+                `cases-analyticsV2: reset progress write failed (non-fatal): ${
+                  err instanceof Error ? err.message : String(err)
+                }`
+              );
+            }
+          };
+          const throttledFlush = makeWallClockThrottle(
+            flushProgress,
+            PROGRESS_WRITE_INTERVAL_MS
+          );
 
-          // Success or partial success — return so Task Manager
-          // self-deletes the SO. The `state` we return is written to
-          // the SO momentarily before deletion, so a `/state` call
-          // landing in that brief window sees the final counts.
-          return { state };
+          try {
+            // Initial flush so `/state.active_reset.state` shows
+            // `phase: 'cases', started_at: ...` immediately rather
+            // than the placeholder `{}` Task Manager wrote at
+            // schedule time. The first onProgress callback would
+            // also trigger this (leading edge), but the very first
+            // page can be slow on a cold ES — without an explicit
+            // initial flush, the operator stares at `state: {}` for
+            // potentially seconds before any page completes.
+            throttledFlush.schedule();
+
+            const result = await runFullReset({
+              savedObjectsClient: deps.savedObjectsClient,
+              writer: deps.writer,
+              activityWriter: deps.activityWriter,
+              taskManager: deps.taskManager,
+              intervalMinutes: reconciliationIntervalMinutes,
+              pageDelayMs,
+              logger,
+              onProgress: ({ phase, processed }) => {
+                liveState.phase = phase;
+                if (phase === 'cases') {
+                  liveState.cases_processed = processed;
+                } else {
+                  liveState.activity_processed = processed;
+                }
+                throttledFlush.schedule();
+              },
+            });
+
+            const completedAt = new Date().toISOString();
+            const casesErrorMessage =
+              result.casesError != null
+                ? result.casesError instanceof Error
+                  ? result.casesError.message
+                  : String(result.casesError)
+                : null;
+            const activityErrorMessage =
+              result.activityError != null
+                ? result.activityError instanceof Error
+                  ? result.activityError.message
+                  : String(result.activityError)
+                : null;
+
+            const finalState: ResetTaskState = {
+              phase: 'completed',
+              cases_processed: result.cases?.processed ?? liveState.cases_processed,
+              activity_processed: result.activity?.processed ?? liveState.activity_processed,
+              cases_cursor: result.casesCursor,
+              activity_cursor: result.activityCursor,
+              started_at: startedAt,
+              completed_at: completedAt,
+              cases_error: casesErrorMessage,
+              activity_error: activityErrorMessage,
+            };
+
+            // Both surfaces failed → throw so the SO survives with
+            // `status: 'failed'` and the most-recent throttled
+            // `liveState` (which captured how far the walks got
+            // before they died). The thrown error's message
+            // includes both per-surface errors so consumers can
+            // distinguish from a deps-resolution failure.
+            if (result.casesError != null && result.activityError != null) {
+              throw new Error(
+                `cases-analyticsV2: full reset failed on both surfaces. cases: ${casesErrorMessage}. activity: ${activityErrorMessage}`
+              );
+            }
+
+            // Success or partial success — return so Task Manager
+            // self-deletes the SO. The `state` we return is written
+            // to the SO momentarily before deletion, so a `/state`
+            // call landing in that brief window sees the final
+            // counts AND `phase: 'completed'` (the differentiator
+            // from a still-running task).
+            return { state: finalState };
+          } finally {
+            // Cancel any pending trailing-edge flush. Without this,
+            // a flush could fire AFTER `run()` returns — landing
+            // either between Task Manager's write of our returned
+            // state and its SO removal (clobbering the final
+            // state), or after the SO is gone (404, harmless but
+            // noisy). Cancelling here makes the lifecycle clean.
+            throttledFlush.cancel();
+          }
         },
         cancel: async () => {
           // No long-lived resources to release. The runners are SO
@@ -348,4 +459,81 @@ export async function fetchResetTask({
     );
     return null;
   }
+}
+
+/**
+ * Wall-clock-throttled fire-and-forget invoker. Used by the reset
+ * task to write live progress into its task SO at most once per
+ * `intervalMs` regardless of how often `schedule()` is called.
+ *
+ * Behaviour:
+ *   - First `schedule()` after construction (or after `intervalMs`
+ *     since the last invocation): fires `fn` immediately. Operator
+ *     sees a state change in `/state` as soon as the first event
+ *     arrives.
+ *   - Subsequent `schedule()` calls within the throttle window:
+ *     coalesce into one trailing-edge invocation at `lastFireAt +
+ *     intervalMs`. The trailing fire reads `fn`'s closure at fire
+ *     time, so the latest state is captured even if 100 events
+ *     coalesced into it.
+ *   - `cancel()`: clears any pending trailing-edge timer. Idempotent.
+ *     Must be called from the reset task's `finally` block to
+ *     prevent post-return writes from racing Task Manager's
+ *     SO-removal step.
+ *
+ * `fn` is called fire-and-forget — its returned Promise is not
+ * awaited. The wrapper is for SO-write throttling, not async
+ * coordination. If `fn` needs to swallow errors (it does, for
+ * progress writes against a possibly-removed SO), it must do so
+ * internally.
+ *
+ * Module-private; lives here because the reset task is its only
+ * caller. If a second consumer ever wants throttled progress writes
+ * we'll lift this into a shared util.
+ */
+function makeWallClockThrottle(
+  fn: () => Promise<void>,
+  intervalMs: number
+): { schedule: () => void; cancel: () => void } {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastFireAt = 0;
+
+  const fire = () => {
+    lastFireAt = Date.now();
+    void fn();
+  };
+
+  return {
+    schedule: () => {
+      const now = Date.now();
+      const elapsed = now - lastFireAt;
+      if (elapsed >= intervalMs) {
+        // Eligible to fire immediately (leading edge or post-window
+        // re-fire). Cancel any stale trailing-edge timer first
+        // (defensive — shouldn't normally have one if elapsed >=
+        // intervalMs, but a paused-then-resumed event loop could
+        // produce this).
+        if (timer != null) {
+          clearTimeout(timer);
+          timer = null;
+        }
+        fire();
+      } else if (timer == null) {
+        // Coalesce into a trailing-edge fire at the next eligible
+        // moment. Subsequent schedule() calls within the window
+        // hit this branch's `else` (timer != null) and no-op.
+        const remaining = intervalMs - elapsed;
+        timer = setTimeout(() => {
+          timer = null;
+          fire();
+        }, remaining);
+      }
+    },
+    cancel: () => {
+      if (timer != null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
+  };
 }

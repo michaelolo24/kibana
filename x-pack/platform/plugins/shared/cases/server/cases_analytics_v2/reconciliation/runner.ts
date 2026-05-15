@@ -66,6 +66,26 @@ export interface RunReconciliationDeps {
    * a continuous full-throttle stream for the duration of the walk.
    */
   pageDelayMs?: number;
+  /**
+   * Optional progress callback fired AFTER each page's bulk-upsert
+   * completes successfully. The `processed` value is the cumulative
+   * count for the current walk (NOT a per-page delta) so callers
+   * implementing throttled progress reporting can just write the
+   * latest value into the task SO without bookkeeping.
+   *
+   * Periodic-task callers omit this — the periodic tick is short
+   * enough that mid-run progress isn't useful, and any callback
+   * overhead would compound across thousands of ticks per day. The
+   * reset task is the only caller today; it wires this up to a
+   * wall-clock-throttled `bulkUpdateState` so `/state.active_reset.state`
+   * reflects live progress during long backfills.
+   *
+   * Synchronous + non-blocking: callbacks should NOT do I/O directly
+   * (the runner doesn't await them). The reset task's wiring keeps
+   * the SO write off the critical path via a fire-and-forget
+   * throttled wrapper.
+   */
+  onPageComplete?: (info: { processed: number }) => void;
 }
 
 export interface RunReconciliationResult {
@@ -100,6 +120,7 @@ export async function runReconciliation({
   logger,
   lastRunAt,
   pageDelayMs = 0,
+  onPageComplete,
 }: RunReconciliationDeps): Promise<RunReconciliationResult> {
   // Capture the wall-clock at tick start. We persist this as the new cursor on
   // a successful drain so the next tick sees only cases updated *after* this
@@ -222,6 +243,14 @@ export async function runReconciliation({
         const space = so.namespaces?.[0] ?? 'default';
         processedBySpace.set(space, (processedBySpace.get(space) ?? 0) + 1);
       }
+
+      // Live progress signal for callers wiring this into `/state`. We
+      // emit AFTER the bulk-upsert + after-page-counts loop so the
+      // reported value matches what's actually been mirrored to ES,
+      // not what we've merely read from the SO store. Fire-and-forget
+      // — the callback shouldn't throw or do I/O directly, and we
+      // don't await it.
+      onPageComplete?.({ processed });
 
       // The last result's `sort` field is the cursor for the next page.
       searchAfter = getLastSort(page.saved_objects);

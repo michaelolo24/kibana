@@ -262,8 +262,14 @@ Example response:
 
 `active_reset` is `null` when no reset is in flight AND the most recent
 reset succeeded (Task Manager auto-removes one-shot tasks on success).
-A populated value with `status: "failed"` is the operator's signal that
-the most recent reset task threw on both surfaces:
+A non-null value reflects either an in-flight reset or the most recent
+failed one.
+
+**Live progress.** During the walk, the reset task's wall-clock-throttled
+progress writer flushes the partial state to the task SO every ~30
+seconds. Operators polling `/state` see the cumulative `cases_processed` /
+`activity_processed` counts tick up live, and the `phase` field
+discriminates which surface is currently being walked:
 
 ```json
 "active_reset": {
@@ -271,9 +277,24 @@ the most recent reset task threw on both surfaces:
   "status": "running",
   "scheduled_at": "2026-05-13T16:02:00.000Z",
   "attempts": 1,
-  "state": {}
+  "state": {
+    "phase": "activity",
+    "cases_processed": 50000,
+    "activity_processed": 312000,
+    "started_at": "2026-05-13T16:02:13.000Z"
+  }
 }
 ```
+
+**Final state.** When the walk completes, Task Manager writes the full
+`ResetTaskState` from the runner's return value (including `cases_cursor`,
+`activity_cursor`, `completed_at`, and any per-surface error messages)
+and then — on success — removes the SO. The brief window between the
+final write and the SO removal is when consumers polling `/state` see
+`phase: "completed"`. After the SO removal, `active_reset` returns to
+`null`. On total failure the SO is preserved with `status: "failed"`
+and the most-recent throttled state intact (so `phase` shows which
+surface died and `*_processed` shows how far the walks got).
 
 If `enabled: true` but either `index_exists` is `false`, the
 corresponding bootstrap (`ensureCaseIndex` / `ensureActivityIndex`)
