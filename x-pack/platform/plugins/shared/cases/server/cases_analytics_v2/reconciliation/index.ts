@@ -6,12 +6,16 @@
  */
 
 import type { Logger, SavedObjectsClientContract } from '@kbn/core/server';
-import type {
-  TaskManagerSetupContract,
-  TaskManagerStartContract,
+import {
+  createTaskRunError,
+  TaskErrorSource,
+  type TaskManagerSetupContract,
+  type TaskManagerStartContract,
 } from '@kbn/task-manager-plugin/server';
 import type { CasesAnalyticsV2WriterContract } from '../writer';
+import type { CasesActivityV2WriterContract } from '../writer/activity';
 import { runReconciliation } from './runner';
+import { runActivityReconciliation } from './activity_runner';
 
 /**
  * Task type registered with Task Manager. Namespaced with `cases.analyticsV2.`
@@ -36,13 +40,38 @@ interface RegisterReconciliationTaskArgs {
   logger: Logger;
   /**
    * Late-bound deps. Task Manager constructs task runners well after plugin
-   * `setup()` runs — we resolve the SO client and the live writer at run
+   * `setup()` runs — we resolve the SO client and the live writers at run
    * time via this closure rather than baking them in at registration.
+   *
+   * Both writers are resolved here so a single tick can run cases then
+   * activity sequentially, sharing the SO client (one client → one
+   * connection pool charge → consistent rate-limiting) and dovetailing
+   * Task Manager's tick budget across both surfaces.
    */
   getRunnerDeps: () => Promise<{
     savedObjectsClient: SavedObjectsClientContract;
     writer: CasesAnalyticsV2WriterContract;
+    activityWriter: CasesActivityV2WriterContract;
   }>;
+}
+
+/**
+ * Persisted task state. Two cursors so the cases and activity surfaces
+ * advance independently: a transient ES blip on one surface pins only
+ * its own cursor and never blocks the other from progressing.
+ */
+interface ReconciliationTaskState {
+  /** Cases-surface cursor (from `runReconciliation`). */
+  cases_last_run_at?: string;
+  /** Activity-surface cursor (from `runActivityReconciliation`). */
+  activity_last_run_at?: string;
+  /**
+   * Legacy single-cursor field. Pre-activity-surface ticks wrote this;
+   * we read it as a one-time seed when the new fields are missing so a
+   * mid-flight upgrade doesn't lose its cases-surface position. Future
+   * ticks write only the new fields, so this naturally falls out.
+   */
+  last_run_at?: string;
 }
 
 /**
@@ -60,38 +89,132 @@ export function registerReconciliationTask({
       title: 'Cases analytics v2 reconciliation',
       description:
         'Periodically re-emits analytics docs for cases updated since the last successful tick. Durability backstop for the fire-and-forget write hooks.',
+      // No auto-retry. The runner already isolates per-surface failures
+      // (a cases-side error doesn't poison the activity walk and vice
+      // versa) and pins only the failing surface's cursor — the next
+      // scheduled tick re-walks the same window naturally. Letting Task
+      // Manager retry inside the same poll interval would just stack a
+      // second failing run on top of an already-stressed cluster (the
+      // most likely cause of the first failure was ES pressure to begin
+      // with). With `maxAttempts: 1`, a failed tick increments the task's
+      // failure metric exactly once, and recovery happens cleanly on the
+      // next interval-driven run.
+      maxAttempts: 1,
       createTaskRunner: ({ taskInstance }) => ({
         run: async () => {
-          // Pull the cursor off the previous tick's state. Task Manager
-          // persists `state` between runs atomically.
-          const previousState = (taskInstance.state ?? {}) as { last_run_at?: string };
-          const lastRunAt = clampCursorToNotFuture(previousState.last_run_at, logger);
+          // Pull both cursors off the previous tick's state. The legacy
+          // `last_run_at` (pre-activity-surface) seeds `cases_last_run_at`
+          // when the new fields aren't present yet — a one-time upgrade
+          // bridge so we don't re-walk every case after the activity
+          // surface lands.
+          const previousState = (taskInstance.state ?? {}) as ReconciliationTaskState;
+          const casesLastRunAt = clampCursorToNotFuture(
+            previousState.cases_last_run_at ?? previousState.last_run_at,
+            logger
+          );
+          const activityLastRunAt = clampCursorToNotFuture(
+            previousState.activity_last_run_at,
+            logger
+          );
 
+          // Carry forward the previous cursors as defaults; each surface
+          // overwrites its own field on success, leaves it pinned on
+          // failure. Per-surface failure isolation: a sustained activity-
+          // index outage doesn't pin the cases-surface cursor (and vice
+          // versa) — each independent surface advances or holds based on
+          // its own walk's outcome.
+          const nextState: Record<string, unknown> = {
+            cases_last_run_at: casesLastRunAt,
+            activity_last_run_at: activityLastRunAt,
+          };
+
+          const deps = await getRunnerDeps();
+
+          // Cases first. Failures pin the cases cursor and abort the tick
+          // (the throw stops activity from starting); the next tick re-
+          // walks the same cases window. We could swap the order, but
+          // running cases first means a `LOOKUP JOIN .cases ON cases.id`
+          // from any post-activity-walk consumer always sees the joined
+          // case row at least as up-to-date as the activity row that
+          // referenced it.
+          let casesError: unknown;
           try {
-            const deps = await getRunnerDeps();
-            const result = await runReconciliation({ ...deps, logger, lastRunAt });
-            return {
-              state: { last_run_at: result.newLastRunAt },
-            };
+            const result = await runReconciliation({
+              savedObjectsClient: deps.savedObjectsClient,
+              writer: deps.writer,
+              logger,
+              lastRunAt: casesLastRunAt,
+            });
+            nextState.cases_last_run_at = result.newLastRunAt;
           } catch (err) {
-            // Failure during the tick: log loudly, leave state unchanged so
-            // the next tick re-walks the same window. Task Manager will
-            // retry per its own policy. Rethrowing lets it count this as a
-            // failure for telemetry.
+            casesError = err;
             logger.error(
-              `cases-analyticsV2: reconciliation tick failed: ${
+              `cases-analyticsV2: cases reconciliation tick failed: ${
                 err instanceof Error ? err.message : String(err)
-              }`,
+              }. Cursor pinned; activity surface still attempted.`,
               { error: err }
             );
-            throw err;
           }
+
+          // Activity second. Independent of cases — runs even if cases
+          // failed, so a stuck cases surface doesn't starve the activity
+          // surface of progress.
+          let activityError: unknown;
+          try {
+            const result = await runActivityReconciliation({
+              savedObjectsClient: deps.savedObjectsClient,
+              activityWriter: deps.activityWriter,
+              logger,
+              lastRunAt: activityLastRunAt,
+            });
+            nextState.activity_last_run_at = result.newLastRunAt;
+          } catch (err) {
+            activityError = err;
+            logger.error(
+              `cases-analyticsV2: activity reconciliation tick failed: ${
+                err instanceof Error ? err.message : String(err)
+              }. Activity cursor pinned.`,
+              { error: err }
+            );
+          }
+
+          // Persist whatever progress each surface made. Even with a
+          // failure on one side, the successful side's new cursor lands
+          // — so a 30-minute outage on the activity surface doesn't
+          // reset the cases-surface cursor and force a tenant-wide
+          // re-walk on recovery.
+          if (casesError != null || activityError != null) {
+            // Surface the failure via Task Manager's `taskRunError` so
+            // metrics still reflect the per-tick outcome — but return
+            // shape rather than throw so the SUCCESSFUL surface's new
+            // cursor still persists. Throwing would discard the entire
+            // `nextState` payload, forcing the next tick to re-walk the
+            // surface that just succeeded.
+            const composite =
+              casesError != null && activityError != null
+                ? new Error(
+                    `cases reconciliation failed (${
+                      casesError instanceof Error ? casesError.message : String(casesError)
+                    }) AND activity reconciliation failed (${
+                      activityError instanceof Error
+                        ? activityError.message
+                        : String(activityError)
+                    })`
+                  )
+                : ((casesError ?? activityError) as Error);
+            return {
+              state: nextState,
+              taskRunError: createTaskRunError(composite, TaskErrorSource.FRAMEWORK),
+            };
+          }
+
+          return { state: nextState };
         },
         cancel: async () => {
-          // The runner is just SO walks and writer dispatch — no long-lived
-          // resources to release. Task Manager calling cancel just stops the
-          // next page fetch; in-flight writer dispatches complete on their
-          // own retry budget.
+          // The runners are just SO walks and writer dispatch — no
+          // long-lived resources to release. Task Manager calling cancel
+          // just stops the next page fetch; in-flight writer dispatches
+          // complete on their own retry budget.
         },
       }),
     },
