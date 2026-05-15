@@ -15,17 +15,17 @@ import { DATA_VIEW_ID_PREFIX, resetV2 } from './helpers';
 /**
  * Verifies the per-space data view model:
  *
- *   1. Visiting Cases in a space bootstraps a managed data view scoped to
- *      that space (`namespaces: [<spaceId>]`), with id
+ *   1. Visiting Cases in a space bootstraps a managed data view
+ *      scoped to that space (`namespaces: [<spaceId>]`), with id
  *      `cases-analytics-managed-<spaceId>`.
  *   2. Different spaces produce different data view SOs.
- *   3. The `.cases` index itself stays cluster-level — only the *view* is
- *      per-space.
+ *   3. The `.cases` index itself stays cluster-level — only the
+ *      view is per-space.
  *
- * Template-driven runtime field isolation (space-A's template-declared
- * extended fields shouldn't appear in space-B's view) is left to a
- * follow-up that exercises the cases-templates SO type — it's covered
- * structurally by the unit tests on the data view service.
+ * Template-driven runtime field isolation (space-A's
+ * template-declared extended fields shouldn't appear in space-B's
+ * view) is covered structurally by the unit tests on the data view
+ * service.
  */
 export default ({ getService }: FtrProviderContext): void => {
   const supertest = getService('supertest');
@@ -41,22 +41,23 @@ export default ({ getService }: FtrProviderContext): void => {
     });
 
     it('bootstraps a separate data view per space on first cases request', async () => {
-      // Fire a cases request in space1 — the request handler context's
-      // ensure hook bootstraps `cases-analytics-managed-space1`.
+      // Fire a cases request in space1 — the request handler
+      // context's ensure hook bootstraps
+      // `cases-analytics-managed-space1`.
       await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, authSpace1);
 
       // Same in space2 — bootstraps `cases-analytics-managed-space2`.
       await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, authSpace2);
 
-      // Poll for both SOs to appear. Bootstrap is fire-and-forget via the
-      // route handler context, so the request returns before the data view
-      // is necessarily persisted.
+      // Poll for both SOs to appear. Bootstrap is fire-and-forget
+      // via the route handler context, so the request returns
+      // before the data view is necessarily persisted.
       const space1Id = `${DATA_VIEW_ID_PREFIX}space1`;
       const space2Id = `${DATA_VIEW_ID_PREFIX}space2`;
       await waitForDataViewExists(es, space1Id);
       await waitForDataViewExists(es, space2Id);
 
-      // Confirm each is scoped to its own namespace, NOT `['*']`.
+      // Each is scoped to its own namespace, not `['*']`.
       const space1View = await getDataViewSO(es, space1Id);
       const space2View = await getDataViewSO(es, space2Id);
       expect(space1View.namespaces).to.eql(['space1']);
@@ -68,8 +69,9 @@ export default ({ getService }: FtrProviderContext): void => {
     });
 
     it('is idempotent: repeated cases requests in the same space do not create duplicates', async () => {
-      // The in-process bootstrappedSpaces cache short-circuits after the
-      // first ensure. Fire several requests and verify only one SO exists.
+      // The in-process bootstrappedSpaces cache short-circuits
+      // after the first ensure. Fire several requests and verify
+      // only one SO exists.
       await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, authSpace1);
       await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, authSpace1);
       await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, authSpace1);
@@ -95,9 +97,9 @@ export default ({ getService }: FtrProviderContext): void => {
   });
 };
 
-// Helpers below — local to this file because they query the Kibana SO index
-// directly (not via the cases or data views REST APIs), which the standard
-// test helpers don't expose.
+// Helpers below — local to this file because they query the Kibana
+// SO index directly (not via the cases or data views REST APIs),
+// which the standard test helpers don't expose.
 
 const DATA_VIEW_SO_TIMEOUT_MS = 15_000;
 const POLL_INTERVAL_MS = 200;

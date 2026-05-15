@@ -7,11 +7,11 @@ Replaces the per-(space × owner) reindex pipeline at `server/cases_analytics/`.
 ## Status
 
 v2 is gated by `xpack.cases.analyticsV2.enabled` (default `false`). v1
-(`server/cases_analytics/`) remains the primary path until v2 has been
-validated in production, after which v1 is removed in a follow-up PR.
+(`server/cases_analytics/`) remains the primary path while v2 is being
+validated.
 
-This PR ships the **`case` surface** (`.cases`) and the **`activity`
-surface** (`.cases-activity`). Attachments arrive in a subsequent PR.
+v2 ships two surfaces: the **`case` surface** (`.cases`) and the
+**`activity` surface** (`.cases-activity`).
 
 ## Architecture
 
@@ -40,24 +40,23 @@ delete (primary, low-latency), and a periodic reconciliation task (backstop,
 catches anything the primary path missed). Both call `writer.upsertCase` /
 `writer.deleteCase`, which are idempotent against the same `_id`.
 
-## Why three indices in the final design (this PR ships one)
+## Index layout
 
-| Surface       | Index                | Mode                         | Source SO(s)                                         |
-| ------------- | -------------------- | ---------------------------- | ---------------------------------------------------- |
-| `case`        | `.cases`             | `index.mode: lookup`, hidden | `cases`                                              |
-| `activity`    | `.cases-activity`    | plain, hidden                | `cases-user-actions`                                 |
-| `attachments` | `.cases-attachments` | plain, hidden                | `cases-comments` (legacy) + `cases-attachments` (v2) |
+| Surface    | Index             | Mode                         | Source SO(s)         |
+| ---------- | ----------------- | ---------------------------- | -------------------- |
+| `case`     | `.cases`          | `index.mode: lookup`, hidden | `cases`              |
+| `activity` | `.cases-activity` | plain, hidden                | `cases-user-actions` |
 
-`.cases` is **lookup-mode** so the activity / attachments surfaces can
-`LOOKUP JOIN` it from ES|QL — "for each activity row, what's the current case
-title / severity / owner?" without denormalization at write time. Lookup mode
-is Technical Preview as of Elasticsearch 8.18 / 9.0; we accept the
-breaking-change risk for cases data because the dataset fits comfortably
-(single shard handles ~50GB; a tenant with millions of cases at ~2KB/doc is a
-few GB at most).
+`.cases` is **lookup-mode** so the activity surface can `LOOKUP JOIN` it from
+ES|QL — "for each activity row, what's the current case title / severity /
+owner?" without denormalization at write time. Lookup mode is Technical
+Preview as of Elasticsearch 8.18 / 9.0; the breaking-change risk is
+acceptable for cases data because the dataset fits comfortably (single shard
+handles ~50GB; a tenant with millions of cases at ~2KB/doc is a few GB at
+most).
 
-Activity and attachments are plain regular indices — they grow per-event and
-shouldn't be locked to a single shard.
+`.cases-activity` is a plain regular index — it grows per-event and shouldn't
+be locked to a single shard.
 
 ## Configuration
 
@@ -73,7 +72,7 @@ xpack.cases.analyticsV2:
     # start; runtime changes require a Kibana
     # restart (the next /reset re-applies the
     # current value to the rescheduled task).
-  enable_debug_mode:
+  enable_admin_routes:
     false # default — set to true to register the
     # mutating administrator routes (/reset and
     # /reconcile/run_soon). The read-only /state
@@ -91,7 +90,7 @@ xpack.cases.analyticsV2:
     # reconciliation runners ONLY when invoked
     # from the reset task. Default 0 keeps the
     # post-reset backfill as fast as possible.
-    # Operators on shared / capacity-constrained
+    # Administrators on shared / capacity-constrained
     # ES clusters raise this to throttle bulk-
     # write pressure during the backfill. Min 0,
     # max 5000.
@@ -99,7 +98,7 @@ xpack.cases.analyticsV2:
 
 When `analyticsV2.enabled: false`, the v2 service is a no-op. Nothing
 registers, nothing schedules, nothing writes. v1 is unaffected regardless of
-v2's state. When `analyticsV2.enable_debug_mode: false` (the default) but
+v2's state. When `analyticsV2.enable_admin_routes: false` (the default) but
 `analyticsV2.enabled: true`, v2 runs normally and `/state` is reachable; only
 the two mutating routes return HTTP 404.
 
@@ -126,9 +125,9 @@ PUT _security/role/cases_analytics_reader
 }
 ```
 
-A future PR will introduce document-level security (DLS) on `cases.owner` +
-`kibana.space_ids` so end users only see cases they're entitled to. Until that
-ships, role-granted access is **unrestricted across cases** — apply with care.
+Until document-level security (DLS) on `cases.owner` + `kibana.space_ids`
+lands, role-granted access is **unrestricted across cases** — apply with
+care.
 
 ## Data views (per-space)
 
@@ -162,13 +161,15 @@ it without the `managed` flag), edit it to use `namespaces: ['*']`, and
 curate
 the runtime fields they want to keep. Out of scope for the managed feature.
 
-**DLS interaction.** Once the implicit-privileges Kibana provider for cases
-lands ([elastic/elasticsearch#148331](https://github.com/elastic/elasticsearch/pull/148331)),
-DLS will scope which case documents a user can read inside `.cases` (on
-`cases.owner` + `kibana.space_ids`). The per-space data view is orthogonal —
-it scopes the _runtime field set_, not the document set. The two compose
-cleanly: a user in space A sees only space-A runtime fields **and** only
-space-A cases.
+**DLS interaction.** A future Kibana-side provider (built on the
+`ImplicitPrivilegesProvider` SPI tracked in
+[elastic/elasticsearch#147176](https://github.com/elastic/elasticsearch/pull/147176))
+will scope which case documents a user can read inside `.cases` via DLS on
+`cases.owner` + `kibana.space_ids`. Until that lands, role-granted access to
+`.cases` is unrestricted (see "Authorization" above). The per-space data view
+is orthogonal — it scopes the _runtime field set_, not the document set. The
+two compose cleanly: a user in space A sees only space-A runtime fields
+**and** (once DLS is enforced) only space-A cases.
 
 ## Runtime field lift
 
@@ -267,7 +268,7 @@ failed one.
 
 **Live progress.** During the walk, the reset task's wall-clock-throttled
 progress writer flushes the partial state to the task SO every ~30
-seconds. Operators polling `/state` see the cumulative `cases_processed` /
+seconds. Administrators polling `/state` see the cumulative `cases_processed` /
 `activity_processed` counts tick up live, and the `phase` field
 discriminates which surface is currently being walked:
 
@@ -308,15 +309,15 @@ The two routes below mutate subsystem state cluster-wide and operate
 space's URL. They're gated behind a second flag:
 
 ```yaml
-xpack.cases.analyticsV2.enable_debug_mode: true # default false
+xpack.cases.analyticsV2.enable_admin_routes: true # default false
 ```
 
 When the flag is off, neither route is registered — requests return
 HTTP 404. The read-only `GET /state` route above is registered
 regardless (a future Case Settings page polls it for health info).
 
-Lives under `analyticsV2` (not the legacy `analytics` namespace, which
-is the v1-only surface and will be removed once v2 supersedes it).
+Lives under `analyticsV2` to keep it isolated from the v1 `analytics`
+namespace.
 
 ### Re-run reconciliation immediately
 
@@ -326,7 +327,7 @@ POST /internal/cases/_analyticsV2/reconcile/run_soon
 
 Triggers Task Manager's `runSoon` for the reconciliation task. Useful if you
 suspect the primary write path dropped a case. **Requires
-`xpack.cases.analyticsV2.enable_debug_mode: true`.** Superuser only.
+`xpack.cases.analyticsV2.enable_admin_routes: true`.** Superuser only.
 
 ### Reset the index
 
@@ -355,23 +356,22 @@ start, deletes every per-space managed Case Analytics data view, clears the
 data view bootstrap cache). The full backfill walk that repopulates both
 indices from the SO source of truth runs **asynchronously** in a one-shot
 Task Manager job (`cases.analyticsV2.fullReset`). The route returns 202 once
-the synchronous portion completes; the operator polls `/state.active_reset`
-to track the backfill. **Requires `xpack.cases.analyticsV2.enable_debug_mode: true`.**
+the synchronous portion completes; the administrator polls `/state.active_reset`
+to track the backfill. **Requires `xpack.cases.analyticsV2.enable_admin_routes: true`.**
 
-**Why async.** At small/medium tenant sizes the in-handler walk fit inside
-Kibana's default 120s request timeout, but at 1000+ spaces the walk grew to
-multi-minute territory and at 10K spaces is estimated 75+ minutes — well past
-any reasonable HTTP request budget. Moving the walk into a dedicated Task
-Manager job means:
+**Why async.** At ~1K+ spaces the backfill walk runs for many minutes, and
+at 10K+ spaces it can run for over an hour — well past any reasonable HTTP
+request budget. Running the walk in a dedicated Task Manager job means:
 
 - `/reset` returns in seconds at any tenant size.
 - The walk is durable across Kibana node restarts (Task Manager re-claims
   a stuck task on another node).
 - Two `/reset` calls can't race — the second call removes the in-flight reset
   task SO before scheduling its own (latest-wins).
-- A configurable per-tenant timeout (`resetTaskTimeoutMinutes`) replaces
-  "implicit HTTP request timeout = walk timeout."
-- A configurable inter-page delay (`resetPageDelayMs`) lets operators throttle
+- The walk timeout is configurable per tenant
+  (`resetTaskTimeoutMinutes`) instead of capped by the HTTP request
+  timeout.
+- A configurable inter-page delay (`resetPageDelayMs`) lets administrators throttle
   bulk-write pressure on shared clusters.
 
 **Polling for completion.** While the backfill task is running,
@@ -380,9 +380,9 @@ auto-removes the task SO and `/state.active_reset` returns `null`. On total
 failure (both surfaces threw), the SO is preserved with `status: "failed"`
 and `state.cases_error` / `state.activity_error` populated. A partial failure
 (one surface succeeded, the other threw) is treated as success at the task
-level — the per-surface error lands in Kibana logs at WARN, and the
-unsuccessful surface's data is filled in by subsequent periodic ticks
-(plus the cases runner's `updated_at IS NULL` branch).
+level — the per-surface error lands in Kibana logs at WARN. The seed step
+omits the failed surface's cursor, so the next periodic tick falls back to
+a full walk of that surface and recovers any docs the partial reset missed.
 
 Use for mapping migrations, recovery from sustained writer failures, or
 administrator-initiated full backfills. Superuser only.
@@ -408,9 +408,9 @@ typical tenant shapes (default `resetPageDelayMs: 0`):
 | ~10K spaces | ~500K | ~15M | ~75 min | `120` recommended |
 | ≥ 25K spaces | ~1.25M | ~37.5M | ~3 hours | `240` recommended |
 
-Numbers extrapolated from a 3-space measurement of ~100 cases / ~1500 user-actions per space. Real tenants will vary — watch the WARN log line `failed to reset cases-analyticsV2 index: task timeout exceeded` as a signal to raise the timeout.
+Numbers are extrapolated from a 3-space measurement of ~100 cases / ~1500 user-actions per space. Real tenants will vary — the WARN log line `cases-analyticsV2: reset failed: ... task timeout exceeded` is the signal to raise the timeout.
 
-**Sizing the page delay.** A non-zero delay halves (at 50ms) or thirds (at 100ms) the sustained ES bulk-write rate the backfill puts on the cluster, at proportional cost to wall-clock. The default `0` is the right call for most operators — set this above zero only when the backfill is observably impacting concurrent workloads on a shared ES cluster:
+**Sizing the page delay.** A non-zero delay halves (at 50ms) or thirds (at 100ms) the sustained ES bulk-write rate the backfill puts on the cluster, at proportional cost to wall-clock. The default `0` is the right call for most administrators — set this above zero only when the backfill is observably impacting concurrent workloads on a shared ES cluster:
 
 | `resetPageDelayMs` | Effect at 10K-space backfill |
 | --- | --- |
@@ -419,9 +419,9 @@ Numbers extrapolated from a 3-space measurement of ~100 cases / ~1500 user-actio
 | `100` | ~325 min, ~770 docs/sec |
 | `500` | ~22 hours, ~190 docs/sec |
 
-Always raise `resetTaskTimeoutMinutes` first if you raise `resetPageDelayMs` — a higher delay means a longer walk, which needs a bigger budget. The 24-hour timeout ceiling means tenants beyond ~10K-space scale running with high page delays may need a follow-up partitioned-walk architecture (see "Beyond 10K spaces" below).
+Always raise `resetTaskTimeoutMinutes` first if you raise `resetPageDelayMs` — a higher delay means a longer walk, which needs a bigger budget. The 24-hour timeout ceiling means tenants beyond ~10K-space scale running with high page delays may need the partitioned-walk architecture described under "Beyond 10K spaces" below.
 
-**Beyond 10K spaces.** The current architecture runs the entire backfill on a single Kibana node (Task Manager dedupes by task ID). At very large tenant sizes (~25K+ spaces) the walk becomes CPU-bound on doc-build + ES bulk serialization and a single node's throughput becomes the limiting factor. The fix is to partition the walk across spaces — multiple reset tasks each handling a contiguous slice, running on different Kibana nodes. Not implemented today; if you hit this scale, file a ticket and we'll prioritize the partitioning work.
+**Beyond 10K spaces.** The architecture runs the entire backfill on a single Kibana node (Task Manager dedupes by task ID). At very large tenant sizes (~25K+ spaces) the walk becomes CPU-bound on doc-build and ES bulk serialization, so a single node's throughput is the limiting factor. The fix is to partition the walk across spaces — multiple reset tasks each handling a contiguous slice, running on different Kibana nodes. Not implemented today.
 
 **PIT lifetime caveat.** The reset task's reconciliation runners hold a Point-In-Time snapshot open for the duration of each surface's walk. At multi-hour walks this prevents ES from merging segments that fall behind the snapshot's view, which can affect merge cadence and disk usage on busy clusters. Mitigation if you observe segment-merge stalls during a long backfill: drop the task timeout to a few hours (forcing a fresh PIT after each timeout) and let the periodic task fill in the residual delta — slower convergence but lighter merge pressure.
 
@@ -429,13 +429,14 @@ Always raise `resetTaskTimeoutMinutes` first if you raise `resetPageDelayMs` —
 
 | Symptom                                         | Likely cause                           | Action                                                          |
 | ----------------------------------------------- | -------------------------------------- | --------------------------------------------------------------- |
-| `cases.analyticsV2 write failed [...]` at ERROR | Transient ES blip                      | Reconciliation will repair within 30 min                        |
+| `cases-analyticsV2: write failed [...]` at WARN | Transient ES blip                      | Reconciliation will repair within 30 min                        |
 | Sustained write failures on every case event    | Mapping conflict (e.g. drifted schema) | Inspect mapping; consider POST /reset                           |
 | Reconciliation tick logs `processed=0` forever  | Task state cursor stuck in the future  | POST /reset (clears state + repopulates)                        |
 | Runtime fields missing from `Cases` data view   | Template SOs have no extended fields   | Check template SOs; reconciliation tick re-syncs runtime fields |
+| Case missing from `.cases` long after creation, no edits since | Out-of-band drift on a never-patched case (e.g. a direct ES delete during incident response, or a schema migration that dropped some docs) | POST /reset. Periodic reconciliation only catches never-patched cases whose `created_at` is later than the cursor; older never-patched cases need the cursor cleared, which `/reset` does. |
 | `/state.active_reset.status: "failed"`          | Reset task threw on both surfaces      | Inspect Kibana logs for the `cases-analyticsV2: full reset failed on both surfaces` ERROR; address the root cause; re-run POST /reset |
 | `/state.active_reset.status: "running"` for hours | Backfill task is mid-walk on a large tenant | Wait. Raise `resetTaskTimeoutMinutes` in `kibana.yml` if it exceeds your tolerance window (see "Tuning /reset at scale") |
-| `Event loop utilization exceeded threshold` from `/internal/cases/_analyticsV2/reset` | Pre-Tier-1 build, or a runner page is slower than expected | Confirm Kibana version includes Tier 1 yields. Raise `resetPageDelayMs` to 50–100 to throttle further |
+| `Event loop utilization exceeded threshold` from `/internal/cases/_analyticsV2/reset` | A runner page is slower than expected on this hardware | Raise `resetPageDelayMs` to 50–100 to throttle further |
 
 ## Activity surface
 
@@ -490,7 +491,7 @@ keeps advancing. `/state` reports both, and `/reset` rebuilds both.
 
 ```
 cases_analytics_v2/
-├── README.md          you are here
+├── README.md          this file
 ├── index.ts           public surface (CasesAnalyticsV2Service, writer contract)
 ├── service.ts         lifecycle orchestrator (setup → start → stop)
 ├── constants.ts       index name + administrator route URLs
@@ -520,11 +521,14 @@ cases_analytics_v2/
 │   │                        (cases first, activity second, per tick;
 │   │                        independent cursors; maxAttempts: 1)
 │   ├── runner.ts            walks cases by `updated_at > last_run_at OR
-│   │                        updated_at IS NULL` using PIT (see comment for the
-│   │                        unconditional null-branch rationale). Both the PIT
-│   │                        open and every paged `find` opt into
-│   │                        `namespaces: ['*']` — the unscoped internal SO
-│   │                        client otherwise silently scopes to `default`.
+│   │                        (updated_at IS MISSING AND created_at >
+│   │                        last_run_at)` using PIT. The null branch picks up
+│   │                        never-patched cases the writer missed at create
+│   │                        time; the `created_at` guard keeps the per-tick
+│   │                        walk bounded. Both the PIT open and every paged
+│   │                        `find` opt into `namespaces: ['*']` — the
+│   │                        unscoped internal SO client otherwise silently
+│   │                        scopes to `default`.
 │   ├── activity_runner.ts   walks user-actions by `created_at > last_run_at`
 │   │                        (immutable SOs — no `updated_at` branch needed).
 │   ├── reset_runner.ts      shared "walk both surfaces + seed cursors" helper

@@ -56,8 +56,10 @@ import {
   transformESModelToCase,
 } from './transform';
 import type { AttachmentService } from '../attachments';
-import type { CasesAnalyticsV2WriterContract } from '../../cases_analytics_v2';
-import type { CasesActivityV2WriterContract } from '../../cases_analytics_v2/writer/activity';
+import type {
+  CasesActivityV2WriterContract,
+  CasesAnalyticsV2WriterContract,
+} from '../../cases_analytics_v2';
 import type { AggregationBuilder, AggregationResponse } from '../../client/metrics/types';
 import { createCaseError, isSOError } from '../../common/error';
 import type {

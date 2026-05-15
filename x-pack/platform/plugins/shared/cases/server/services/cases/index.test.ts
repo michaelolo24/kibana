@@ -39,8 +39,7 @@ import { loggerMock } from '@kbn/logging-mocks';
 import { CONNECTOR_ID_REFERENCE_NAME } from '../../common/constants';
 import { getNoneCaseConnector } from '../../common/utils';
 import { CasesService } from '.';
-import { V2_NOOP_WRITER } from '../../cases_analytics_v2/writer';
-import { V2_NOOP_ACTIVITY_WRITER } from '../../cases_analytics_v2/writer/activity';
+import { V2_NOOP_ACTIVITY_WRITER, V2_NOOP_WRITER } from '../../cases_analytics_v2';
 import type { ESCaseConnectorWithId } from '../test_utils';
 import {
   createESJiraConnector,

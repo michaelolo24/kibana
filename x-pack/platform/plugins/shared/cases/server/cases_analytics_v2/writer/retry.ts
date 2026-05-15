@@ -8,25 +8,25 @@
 interface WithRetryOptions {
   /** The operation to attempt. Resolves on success, rejects to trigger retry. */
   op: () => Promise<void>;
-  /** Maximum number of retries after the first attempt. Defaults imply 4 total tries. */
+  /** Maximum number of retries after the first attempt. */
   maxRetries: number;
-  /** Base delay before the second attempt. Doubled per attempt; jittered. */
+  /** Base delay before the second attempt. Doubled per attempt and jittered. */
   initialDelayMs: number;
 }
 
 /**
- * Bounded jittered exponential backoff. Used by the analytics writer for
- * transient ES failures (cluster blip, version conflict on bulk concurrent
- * write, etc.).
+ * Bounded jittered exponential backoff. Used by the analytics writers
+ * for transient ES failures (cluster blip, version conflict on
+ * concurrent bulk write, etc.).
  *
- * The first attempt fires immediately. On failure, attempt N waits for
- *   `Math.random() * initialDelayMs * 2 ** (N - 1)` ms
- * before retrying. After `maxRetries` failures the final error is thrown.
+ * The first attempt fires immediately. On failure, attempt N waits
+ * `Math.random() * initialDelayMs * 2 ** (N - 1)` ms before retrying.
+ * After `maxRetries` failures the final error is thrown.
  *
- * "Full jitter" (random factor in `[0, delay)`) is a deliberate choice — it
- * spreads concurrent retries from multiple Kibana nodes across the backoff
- * window rather than clustering at the deterministic delay, which avoids the
- * thundering-herd pattern when an ES blip recovers.
+ * Uses "full jitter" (random factor in `[0, delay)`) so concurrent
+ * retries from multiple Kibana nodes spread across the backoff window
+ * instead of clustering at a deterministic delay; avoids a
+ * thundering-herd when an ES blip recovers.
  */
 export async function withRetry({
   op,

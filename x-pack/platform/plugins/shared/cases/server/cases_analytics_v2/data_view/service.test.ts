@@ -132,7 +132,7 @@ describe('CasesAnalyticsV2DataViewService', () => {
       await service.ensureForSpace(deps);
       await service.ensureForSpace(deps);
 
-      // Only one round of work, even though we called ensure twice.
+      // Only one round of work, even though ensure was called twice.
       expect(dvService.get).toHaveBeenCalledTimes(1);
       expect(dvService.createAndSave).toHaveBeenCalledTimes(1);
     });
@@ -146,40 +146,34 @@ describe('CasesAnalyticsV2DataViewService', () => {
     });
 
     /**
-     * FAILURE SCENARIO: Concurrent first-request bootstrap races into
-     *                   version_conflict_engine_exception
-     * Symptom: Two parallel cases requests in a fresh-cache space both
-     *          pass the cache check, both see `dvService.get` return 404,
-     *          and both call `createAndSave`. The loser surfaces
-     *          `version_conflict_engine_exception: [index-pattern:cases-
-     *          analytics-managed-<spaceId>]: document already exists`
-     *          via the WARN log path. Users see broken data view bootstrap
-     *          telemetry in support sessions even though the doc landed
-     *          fine.
-     * Log signature: `cases-analyticsV2: data view ensure failed for
-     *                 space=<...>: version_conflict_engine_exception`
-     * Trigger: First cases-request burst after Kibana boot in a tenant
-     *          with several concurrently-created cases per space.
-     * Recovery: In-flight dedupe — concurrent ensures for the same space
-     *           collapse onto a single promise; the second caller just
-     *           awaits the first's result.
+     * Two parallel cases requests in a fresh-cache space both pass the
+     * cache check, both see `dvService.get` return 404, and both call
+     * `createAndSave`. Without dedupe, the loser surfaces
+     * `version_conflict_engine_exception` via the WARN log path even
+     * though the doc landed fine. In-flight dedupe collapses the two
+     * ensures onto a single promise.
      */
     it('collapses concurrent ensures for the same space onto a single in-flight promise', async () => {
       const { service, dvService, deps } = setup([]);
       stubMissingDataView(dvService);
-      // Stretch `createAndSave` so the second `ensureForSpace` lands while
-      // the first one is mid-flight. Without dedupe, both would race into
-      // `createAndSave` and the second would surface the version conflict.
-      let resolveCreate: () => void = () => {};
-      dvService.createAndSave.mockImplementation(
-        () =>
-          new Promise<void>((resolve) => {
-            resolveCreate = resolve;
-          })
-      );
+      // Stretch `createAndSave` so the second `ensureForSpace` lands
+      // while the first is mid-flight. The deferred is created
+      // up-front (rather than captured inside the mock) so the
+      // resolver is always the real one. The first `await` in the
+      // production path happens before `createAndSave` (template
+      // page-read, runtime field map compute), so the test waits
+      // until `createAndSave` is actually invoked before resolving.
+      let resolveCreate!: () => void;
+      const createPromise = new Promise<void>((resolve) => {
+        resolveCreate = resolve;
+      });
+      dvService.createAndSave.mockReturnValue(createPromise);
 
       const first = service.ensureForSpace(deps);
       const second = service.ensureForSpace(deps);
+      while (dvService.createAndSave.mock.calls.length === 0) {
+        await new Promise((r) => setImmediate(r));
+      }
       resolveCreate();
       await Promise.all([first, second]);
 
@@ -188,16 +182,33 @@ describe('CasesAnalyticsV2DataViewService', () => {
     });
 
     it('dedupe slot frees up so a later ensure (post-cache-eviction or refresh) re-runs work', async () => {
-      // Per-call sanity check: the in-flight map must be cleared in the
-      // finally block, otherwise the next ensure after eviction / refresh
-      // would silently no-op forever.
-      const { service, dvService, deps } = setup([]);
+      // The in-flight map must be cleared in the finally block,
+      // otherwise the next ensure after eviction / refresh would
+      // silently no-op forever.
+      //
+      // The test models the lifecycle-hook flow that drives
+      // `refreshForSpace`:
+      //   - first ensure runs against an empty templates set;
+      //   - a template is then created in the same space, changing
+      //     the snake-key fingerprint;
+      //   - `refreshForSpace` must not await the stale/resolved
+      //     inflight promise and must reach `dvService.get` to diff
+      //     against the persisted data view.
+      // Using identical templates on both calls would hit the
+      // fingerprint shortcut by design, so the second page differs.
+      const { service, dvService, internalSoClient, deps } = setup([]);
       stubMissingDataView(dvService);
       await service.ensureForSpace(deps);
 
-      // Force-refresh path bypasses the cache short-circuit; if the
-      // inflight map wasn't cleared, this would await a resolved promise
-      // and never re-invoke the data views service.
+      // Stage a freshly-created template so the fingerprint differs
+      // from the cached one and the refresh path does work.
+      internalSoClient.find.mockReset();
+      stubFindOnePage(internalSoClient, [
+        makeTemplate('tpl-1', [{ name: 'risk', type: 'long', control: 'INPUT_NUMBER' }]),
+      ]);
+      // Force-refresh bypasses the cache short-circuit; if the
+      // inflight map wasn't cleared, this would await a resolved
+      // promise and never re-invoke the data views service.
       stubMissingDataView(dvService);
       await service.refreshForSpace(deps);
 
@@ -205,28 +216,20 @@ describe('CasesAnalyticsV2DataViewService', () => {
     });
 
     /**
-     * FAILURE SCENARIO: Cross-Kibana-node bootstrap race
-     * Symptom: Two Kibana nodes in the same cluster bootstrap the same
-     *          space concurrently. Per-process dedupe doesn't help because
-     *          they're in different processes; the loser's `createAndSave`
-     *          surfaces `version_conflict_engine_exception` and the cache
-     *          slot stays empty, so every subsequent request in that
-     *          space on the losing node pays the full ensure cost again.
-     * Log signature (before): WARN — looks like a bug.
-     * Log signature (after): DEBUG — explicit "another node won".
-     * Trigger: Cluster-wide burst of first cases requests, multi-node
-     *          deployments.
-     * Recovery: Both nodes computed the desired runtime field map from the
-     *           same persisted templates view, so the winning doc carries
-     *           the same fields ours would have. Treat the 409 as a benign
-     *           success; populate the in-process cache as if we'd written.
+     * Two Kibana nodes can bootstrap the same space concurrently;
+     * per-process dedupe doesn't help across processes. The loser's
+     * `createAndSave` returns a `version_conflict_engine_exception`,
+     * but both nodes computed the runtime field map from the same
+     * persisted templates view, so the winning doc carries the same
+     * fields. The 409 is treated as a benign success and the
+     * in-process cache is populated as if the local node had written.
      */
     it('treats a cross-node version_conflict on createAndSave as a benign bootstrap success', async () => {
       const { service, dvService, deps, logger } = setup([]);
       stubMissingDataView(dvService);
-      // Mirror ES's wire shape — `version_conflict_engine_exception` text
-      // plus a 409 statusCode. We check both in `isVersionConflictError`
-      // so the test pins both paths.
+      // Mirror ES's wire shape — `version_conflict_engine_exception`
+      // text plus a 409 statusCode. Both are checked in
+      // `isVersionConflictError`, so the test pins both paths.
       const conflictErr = Object.assign(
         new Error(
           '[index-pattern:cases-analytics-managed-default]: version conflict, document already exists (current version [1])'
@@ -248,9 +251,9 @@ describe('CasesAnalyticsV2DataViewService', () => {
     });
 
     it('still surfaces non-conflict createAndSave failures via the WARN path', async () => {
-      // Negative case for the conflict-tolerance path: a 503 / 500 from
-      // ES must NOT be swallowed — those are real failures the operator
-      // needs to see, and the next request should re-attempt.
+      // Negative case for the conflict-tolerance path: a 503 / 500
+      // from ES must not be swallowed; the administrator needs to see
+      // them and the next request should re-attempt.
       const { service, dvService, deps, logger } = setup([]);
       stubMissingDataView(dvService);
       dvService.createAndSave.mockRejectedValueOnce(
@@ -263,17 +266,12 @@ describe('CasesAnalyticsV2DataViewService', () => {
     });
 
     /**
-     * FAILURE SCENARIO: Stale or soft-deleted templates poison the runtime field map
-     * Symptom: A renamed template (`score_as_long → priority_as_keyword`)
-     *          would still publish the old `score_as_long` runtime field
-     *          forever, because old template versions and soft-deleted
-     *          rows are still visible to a naive `find()`. The data view
-     *          would accumulate ghost fields.
-     * Log signature: none — this is a silent correctness drift.
-     * Trigger: Any template `update` (creates a new version, marks the
-     *          old one `isLatest: false`) or `delete` (sets `deletedAt`).
-     * Recovery: First filtered ensure recomputes the map without the
-     *          stale entries.
+     * Templates use soft-delete and versioning, so a naive `find()`
+     * keeps returning old/deleted template rows. Without the
+     * `isLatest: true AND deletedAt: null` filter, a renamed template
+     * (`score_as_long` → `priority_as_keyword`) would publish both
+     * runtime fields forever and the data view would accumulate
+     * ghost fields silently.
      */
     it('filters templates by isLatest=true AND deletedAt=null and only requests the fieldNames attribute', async () => {
       const { service, dvService, deps, internalSoClient } = setup([]);
@@ -297,9 +295,9 @@ describe('CasesAnalyticsV2DataViewService', () => {
 
   describe('refreshForSpace', () => {
     it('always re-fetches templates so template lifecycle changes propagate', async () => {
-      // ensureForSpace would short-circuit on a fresh cache entry; refresh
-      // must not. The contract refresh callers (template create / update /
-      // delete hooks) rely on: "I just changed something, look again".
+      // ensureForSpace would short-circuit on a fresh cache entry;
+      // refresh must not. Refresh callers (template create / update /
+      // delete hooks) rely on "I just changed something, look again".
       const { service, dvService, deps, internalSoClient } = setup([
         makeTemplate('tpl-1', [{ name: 'risk', type: 'long', control: 'INPUT_NUMBER' }]),
       ]);
@@ -317,8 +315,9 @@ describe('CasesAnalyticsV2DataViewService', () => {
 
     it('runs the data view update when the recomputed snake-key set differs from the cached one', async () => {
       const { service, dvService, deps, internalSoClient } = setup([]);
-      // Pages: ensure sees one template; refresh sees a different template.
-      // The fingerprint differs, so the diff branch fires on refresh.
+      // Page 1: one template (ensure). Page 2: a different template
+      // (refresh). The fingerprint differs, so the diff branch
+      // fires on refresh.
       stubFindWithPages(internalSoClient, [
         [makeTemplate('tpl-1', [{ name: 'risk', type: 'long', control: 'INPUT_NUMBER' }])],
         [makeTemplate('tpl-1', [{ name: 'priority', type: 'keyword', control: 'INPUT_TEXT' }])],
@@ -344,9 +343,9 @@ describe('CasesAnalyticsV2DataViewService', () => {
     });
 
     it('skips the data view fetch and update when the recomputed fingerprint matches the cached one', async () => {
-      // Same templates on both calls → same fingerprint → no work past the
-      // templates fetch. This is the optimization: most template edits
-      // (rename, tags, validation) don't change snake-keys at all.
+      // Same templates on both calls → same fingerprint → no work
+      // past the templates fetch. Most template edits (rename, tags,
+      // validation) don't change snake-keys at all.
       const { service, dvService, deps, internalSoClient } = setup([]);
       stubFindWithPages(internalSoClient, [
         [makeTemplate('tpl-1', [{ name: 'score', type: 'long', control: 'INPUT_NUMBER' }])],
@@ -375,7 +374,6 @@ describe('CasesAnalyticsV2DataViewService', () => {
       await service.ensureForSpace(deps);
       service.clearBootstrapCache();
 
-      // Second ensure runs again because the cache was cleared.
       stubMissingDataView(dvService);
       await service.ensureForSpace(deps);
 
@@ -385,14 +383,12 @@ describe('CasesAnalyticsV2DataViewService', () => {
 
   describe('fingerprint cache', () => {
     /**
-     * FAILURE SCENARIO: Per-request hot-path cost compounds across thousands of spaces
-     * Symptom: At thousands-of-spaces scale, every cases request that
-     *          touches the data view service incurs an SO `get` + a deep
-     *          `isEqual` over the runtime field map. Most are no-ops
-     *          because the snake-key set hasn't actually changed.
-     * Log signature: none — silent CPU + I/O burn.
-     * Trigger: Sustained traffic across many spaces with stable templates.
-     * Recovery: Fingerprint cache short-circuits the diff path on hit.
+     * Without a fingerprint cache, every cases request that touches
+     * the data view service would incur an SO `get` plus a deep
+     * `isEqual` over the runtime field map — silent CPU and I/O
+     * burn at thousands-of-spaces scale, since most edits don't
+     * change the snake-key set. The fingerprint cache short-circuits
+     * the diff path on hit.
      */
     it('skips the data view fetch on a within-TTL fingerprint hit', async () => {
       // Two refreshForSpace calls with identical templates. The first
@@ -446,9 +442,9 @@ describe('CasesAnalyticsV2DataViewService', () => {
     });
 
     it('does not cache the fingerprint when the ensure path throws', async () => {
-      // A failure inside ensureOrRefreshForSpace must NOT poison the cache
-      // — otherwise the next request would short-circuit on a fingerprint
-      // that was never actually applied to a data view.
+      // A failure inside ensureOrRefreshForSpace must not poison the
+      // cache — otherwise the next request would short-circuit on a
+      // fingerprint that was never applied to a data view.
       const { service, dvService, deps } = setup([
         makeTemplate('tpl-1', [{ name: 'risk', type: 'long', control: 'INPUT_NUMBER' }]),
       ]);
@@ -456,8 +452,8 @@ describe('CasesAnalyticsV2DataViewService', () => {
 
       await service.ensureForSpace(deps);
 
-      // Second call must do real work — the failed call shouldn't have
-      // populated the fingerprint cache.
+      // The second call must do real work — the failed call must
+      // not have populated the fingerprint cache.
       stubMissingDataView(dvService);
       await service.ensureForSpace(deps);
 
@@ -467,24 +463,18 @@ describe('CasesAnalyticsV2DataViewService', () => {
 
   describe('bootstrap cache TTL', () => {
     /**
-     * FAILURE SCENARIO: Out-of-band data view deletion silently freezes runtime fields
-     * Symptom: An administrator deletes a per-space cases data view via the
-     *          Stack Management UI (not via the `/reset` route, which would
-     *          clear the cache). The Cases data view never reappears for
-     *          the lifetime of the Kibana process — Discover / Lens show
-     *          "no data view".
-     * Log signature: `cases-analyticsV2: data view ensure failed` (only on
-     *          subsequent failures); the silent freeze itself produces no
-     *          log line.
-     * Trigger: Admin deletes the SO directly. The in-memory cache still says
-     *          "bootstrapped" so `ensureForSpace` short-circuits forever.
-     * Recovery: Self-heals at the next request after the TTL elapses
-     *          (`BOOTSTRAP_CACHE_TTL_MS`). Faster recovery: hit `/reset`,
-     *          which calls `clearBootstrapCache` directly.
+     * If an administrator deletes a per-space cases data view via
+     * Stack Management (not via `/reset`, which clears the cache),
+     * the in-memory cache still claims "bootstrapped" and
+     * `ensureForSpace` short-circuits forever. The TTL re-check
+     * self-heals at the next request after `BOOTSTRAP_CACHE_TTL_MS`
+     * elapses; faster recovery requires hitting `/reset`, which
+     * calls `clearBootstrapCache` directly.
      */
     it('re-runs the ensure path after the TTL elapses, recreating a missing data view', async () => {
-      // Bespoke wiring: the test owns the wall clock via a `now()` override,
-      // so it can't share `setup()`'s real-time service instance.
+      // Bespoke wiring: the test owns the wall clock via a `now()`
+      // override, so it can't share `setup()`'s real-time service
+      // instance.
       const internalSoClient = savedObjectsClientMock.create();
       stubFindOnePage(internalSoClient, []);
       const dvService = makeMockDvService();
@@ -501,9 +491,10 @@ describe('CasesAnalyticsV2DataViewService', () => {
         dataViewsService: makeDataViewsPluginStart(dvService),
         internalSavedObjectsClient: internalSoClient,
       });
-      // `logger.get('dataView')` is what the service holds onto for its
-      // own log calls; the parent mock's `.get` returns a child mock by
-      // default so we resolve to the actual instance for assertions.
+      // `logger.get('dataView')` is what the service holds for its
+      // own log calls; the parent mock's `.get` returns a child mock
+      // by default, so the test resolves the actual instance for
+      // assertions.
       const childLogger = (parentLogger.get as jest.Mock).mock.results[0]?.value as ReturnType<
         typeof loggerMock.create
       >;
@@ -527,10 +518,10 @@ describe('CasesAnalyticsV2DataViewService', () => {
       expect(dvService.get).not.toHaveBeenCalled();
       expect(dvService.createAndSave).not.toHaveBeenCalled();
 
-      // Past TTL with the data view deleted out-of-band: ensure re-runs and recreates.
-      // The post-TTL re-check is logged at DEBUG so support cases ("user
-      // reports no data view") can confirm the next request re-checked
-      // instead of trusting a stale cache.
+      // Past TTL, with the data view deleted out-of-band: ensure
+      // re-runs and recreates. The post-TTL re-check logs at DEBUG
+      // so support cases ("user reports no data view") can confirm
+      // the next request re-checked instead of trusting a stale cache.
       nowMs += 6 * 60_000; // +6 more minutes (well past 5-minute TTL)
       stubMissingDataView(dvService);
       childLogger?.debug.mockClear?.();

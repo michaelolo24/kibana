@@ -47,8 +47,8 @@ export default ({ getService }: FtrProviderContext): void => {
 
   describe('activity surface ES round-trip', () => {
     afterEach(async () => {
-      // Clean SOs first, then reset both surfaces — reset's follow-up
-      // reconciliation has nothing to find that way.
+      // Clean SOs first, then reset both surfaces — reset's
+      // follow-up reconciliation has nothing to find that way.
       await deleteAllCaseItems(es);
       await resetV2(supertest);
     });
@@ -62,9 +62,9 @@ export default ({ getService }: FtrProviderContext): void => {
       expect(createDoc!.cases.id).to.eql(created.id);
       expect(createDoc!.action.verb).to.eql('create');
       expect(createDoc!.kibana.space_ids).to.eql(['default']);
-      // payload_json contains the full create_case payload — assert it
-      // round-trips a known field (title) so analysts can pivot via
-      // ES|QL `MV_FROM_JSON` on the column.
+      // payload_json contains the full create_case payload —
+      // assert a known field (title) round-trips so analysts can
+      // pivot via ES|QL `MV_FROM_JSON` on the column.
       const parsed = JSON.parse(createDoc!.action.payload_json) as { title?: string };
       expect(parsed.title).to.eql(created.title);
     });
@@ -87,7 +87,7 @@ export default ({ getService }: FtrProviderContext): void => {
         },
         auth,
       });
-      // updateCase returns the latest cases array; pick the first.
+      // updateCase returns the latest cases array.
       expect(updated[0].id).to.eql(created.id);
 
       // Wait for at least three docs (create_case + status + severity).
@@ -98,19 +98,19 @@ export default ({ getService }: FtrProviderContext): void => {
       expect(statusDoc).to.be.an('object');
       expect(severityDoc).to.be.an('object');
 
-      // Curated extracts: the analytics dimension that downstream Lens /
-      // ES|QL pivots are expected to filter on.
+      // Curated extracts: the analytics dimension that downstream
+      // Lens / ES|QL pivots filter on.
       expect(statusDoc!.action.status_new).to.eql('in-progress');
       expect(severityDoc!.action.severity_new).to.eql('high');
-      // Verbs preserved from the SO action.
+      // Verbs are preserved from the SO action.
       expect(statusDoc!.action.verb).to.eql('update');
       expect(severityDoc!.action.verb).to.eql('update');
     });
 
     it('deleteCase → cascade-deletes every activity doc for that case', async () => {
       const created = await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, auth);
-      // Drive at least one extra user-action so cascade-delete has more
-      // than just the create_case row to drop.
+      // Drive at least one extra user-action so the cascade-delete
+      // has more than just the create_case row to drop.
       await updateCase({
         supertest: supertestWithoutAuth,
         params: {
@@ -148,16 +148,17 @@ export default ({ getService }: FtrProviderContext): void => {
       const created = await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, auth);
       await waitForActivityForCase(es, created.id, 1);
 
-      // C17: `/reset` returns 202 and the backfill walk runs in a
-      // one-shot Task Manager job. The `resetV2` helper handles both
-      // the 202 expectation and the polling loop until the task SO
-      // disappears (success → Task Manager auto-removes).
+      // `/reset` returns 202 and the backfill walk runs in a
+      // one-shot Task Manager job. `resetV2` handles both the 202
+      // expectation and the polling loop until the task SO
+      // disappears (Task Manager auto-removes one-shot tasks on
+      // success).
       await resetV2(supertest);
 
       // After the backfill task completes, both indices are rebuilt
-      // and the activity walk re-emitted the create_case user-action
+      // and the activity walk re-emits the create_case user-action
       // (its source SO is still present — only the analytics index
-      // was rebuilt). Poll for the row to ride out the residual ES
+      // was rebuilt). Poll for the row to ride out residual ES
       // refresh latency between the task self-deleting its SO and
       // the row becoming searchable.
       await waitForActivityForCase(es, created.id, 1);

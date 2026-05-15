@@ -20,53 +20,50 @@ import { CASE_INDEX_MAPPING } from './case';
 /**
  * Schema drift guards — three complementary layers.
  *
- * **Layer 1 (buildCaseDoc output ⊆ CASE_INDEX_MAPPING).** The `.cases`
- * index is mapped `dynamic: 'strict'` — any field a doc builder emits that
- * isn't in the mapping fails the write with `mapper_parsing_exception`. The
- * writer's `.catch` swallow means that failure is silent: the API response
- * succeeds, no doc lands, and the only signal is an ERROR log. This layer
- * round-trips a maximally-populated synthetic case through `buildCaseDoc`
- * and asserts every emitted dotted path resolves in `CASE_INDEX_MAPPING`.
- * Catches: engineer added a field to the doc-builder without updating the
- * mapping.
+ * Layer 1 (buildCaseDoc output ⊆ CASE_INDEX_MAPPING). The `.cases`
+ * index is mapped `dynamic: 'strict'` — any field a doc builder
+ * emits that isn't in the mapping fails the write with
+ * `mapper_parsing_exception`. The writer's `.catch` swallow makes
+ * that failure silent (success response, no doc landed, only an
+ * ERROR log). This layer round-trips a maximally-populated synthetic
+ * case through `buildCaseDoc` and asserts every emitted dotted path
+ * resolves in `CASE_INDEX_MAPPING`. Catches a field added to the
+ * doc-builder without a matching mapping update.
  *
- * **Layer 2 (SO mapping ⊆ CASE_INDEX_MAPPING via `cases.<path>`).** Every
- * field present in the cases SO mapping at
- * `server/saved_object_types/cases/cases.ts` has a corresponding entry in
- * `CASE_INDEX_MAPPING` under `cases.<path>` (or is explicitly allowlisted
- * as an intentional divergence). Catches: engineer added an indexed field
- * to the SO mapping without mirroring it in v2.
+ * Layer 2 (SO mapping ⊆ CASE_INDEX_MAPPING via `cases.<path>`).
+ * Every field in the cases SO mapping at
+ * `server/saved_object_types/cases/cases.ts` has a corresponding
+ * entry in `CASE_INDEX_MAPPING` under `cases.<path>` (or is
+ * explicitly allowlisted as an intentional divergence). Catches a
+ * field added to the SO mapping without a mirror in v2.
  *
- * **Layer 3 (`Required<CasePersistedAttributes>` fixture).** The synthetic
- * case's attribute object is typed as
- * `Record<keyof Required<CasePersistedAttributes>, unknown>` — a mapped type
- * that enumerates every key, including optional ones. Missing a key from
- * the fixture is a TypeScript compile error. Catches: engineer added a
- * persisted-attribute key to `CasePersistedAttributes` but never decided
- * what (or whether) `buildCaseDoc` should emit for it. The fixture forces
- * the decision.
+ * Layer 3 (`Required<CasePersistedAttributes>` fixture). The
+ * synthetic case's attribute object is typed as
+ * `Record<keyof Required<CasePersistedAttributes>, unknown>` — a
+ * mapped type that enumerates every key, including optional ones.
+ * Missing a key is a TypeScript compile error, forcing a decision
+ * about what (or whether) `buildCaseDoc` should emit for it.
  *
  * Excluded from Layer 1:
- *   - `cases.extended_fields.*`: lands via the dynamic_template, not static
- *     properties.
- *   - `cases.observables.*`: lands via the dynamic_template (denormalized
- *     per-typeKey keys are dynamic).
+ *   - `cases.extended_fields.*`: lands via the dynamic_template,
+ *     not static properties.
+ *   - `cases.observables.*`: lands via the dynamic_template
+ *     (denormalized per-typeKey keys are dynamic).
  */
 
 // ----- Layer 3 fixture (`Required<CasePersistedAttributes>`-keyed) -----
 //
 // Keys are enumerated via a mapped type over `Required<...>`. If
-// `CasePersistedAttributes` gains a new property — even an optional one —
-// TypeScript fails this file at compile time: "Property 'newField' is
-// missing in type ...". The engineer is forced to populate the fixture
-// with a representative value, which then surfaces whether `buildCaseDoc`
-// should emit the new attribute (Layer 1 verifies the round-trip).
+// `CasePersistedAttributes` gains a new property — even an optional
+// one — TypeScript fails this file at compile time, forcing a
+// decision about whether `buildCaseDoc` should emit it (Layer 1
+// verifies the round-trip).
 //
-// Values are typed as `unknown` because some attribute types use branded
-// shapes (`ConnectorPersisted`, `ExternalServicePersisted`, etc.) that
-// aren't worth importing for this test's purpose. The structural drift
-// checks (Layers 1 + 2) and the doc-builder's own typed compile-time
-// checks catch shape problems elsewhere.
+// Values are typed as `unknown` because some attribute types use
+// branded shapes (`ConnectorPersisted`, `ExternalServicePersisted`,
+// etc.) that aren't worth importing here. The structural drift
+// checks (Layers 1 + 2) and the doc-builder's own compile-time
+// types catch shape problems elsewhere.
 const buildFullAttributes = (): {
   [K in keyof Required<CasePersistedAttributes>]: unknown;
 } => ({
@@ -95,10 +92,11 @@ const buildFullAttributes = (): {
   time_to_resolve: 300000,
   incremental_id: 42,
   template: { id: 't-1', version: 1 },
-  // Realistic shape: runtime connectors always carry an `id` (which connector
-  // instance) and a polymorphic `fields` blob (jira's are not key/value).
-  // The fixture matches reality so a regression where v2 mapping forgets
-  // `connector.id` or assumes `fields.{key,value}` fails Layer 1.
+  // Runtime connectors always carry an `id` (which connector
+  // instance) and a polymorphic `fields` blob (e.g. jira's fields
+  // are not key/value). The fixture matches that shape so any v2
+  // mapping that forgets `connector.id` or assumes
+  // `fields.{key,value}` fails Layer 1.
   connector: {
     id: 'connector-1',
     name: 'jira',
@@ -198,24 +196,26 @@ describe('case mapping covers every doc-builder field', () => {
 // ----- Layer 2: SO mapping ⊆ v2 mapping (via `cases.<path>` prefix rule) -----
 
 /**
- * Fields present in the cases SO mapping that intentionally don't appear at
- * the parallel `cases.<path>` location in v2 *and* aren't covered by an
- * `enabled: false` / `dynamic: true` ancestor (which `isCovered` handles
- * naturally — see below).
+ * Fields present in the cases SO mapping that intentionally don't
+ * appear at the parallel `cases.<path>` location in v2 *and* aren't
+ * covered by an `enabled: false` / `dynamic: true` ancestor (which
+ * `isCovered` handles via prefix-match).
  *
- * Document the rationale next to each entry. The failure mode of an
- * unexplained allowlist entry is "engineer silently skips a new SO field,"
- * which is exactly what this layer exists to prevent.
+ * Document the rationale next to each entry. An unexplained
+ * allowlist entry is "engineer silently skips a new SO field" —
+ * exactly what this layer exists to prevent.
  */
 const OMITTED_FROM_ANALYTICS_V2_MIRROR: ReadonlyMap<string, string> = new Map([
-  // Empty today. The handful of intentional divergences are all covered by
-  // an opaque (`enabled: false`) or `dynamic: true` parent in v2 and are
-  // caught by the `isCovered` rule:
-  //  - cases.settings.{syncAlerts,extractObservables} → v2 cases.settings
-  //    is `enabled: false` (per-case config, not an analytics dimension).
-  //  - cases.observables.{typeKey,value,description}  → v2 cases.observables
-  //    is `dynamic: true` (denormalized to `cases.observables.<typeKey>`
-  //    via dynamic_template; description dropped).
+  // Empty. The intentional divergences are all covered by an opaque
+  // (`enabled: false`) or `dynamic: true` parent in v2 and caught by
+  // the `isCovered` rule:
+  //  - cases.settings.{syncAlerts,extractObservables}
+  //    → v2 cases.settings is `enabled: false` (per-case config,
+  //      not an analytics dimension).
+  //  - cases.observables.{typeKey,value,description}
+  //    → v2 cases.observables is `dynamic: true` (denormalized to
+  //      `cases.observables.<typeKey>` via dynamic_template;
+  //      description dropped).
 ]);
 
 describe('cases SO mapping is mirrored in CASE_INDEX_MAPPING', () => {
@@ -244,15 +244,15 @@ describe('cases SO mapping is mirrored in CASE_INDEX_MAPPING', () => {
 
 /**
  * Typed runtime fields are published at `cases.<snakeKey>` (e.g.
- * `cases.score_as_long`) — direct children of `cases`. The strict collision
- * is at the exact full path `cases.<snake>`; checking the leaf segment
- * everywhere is broader-than-strictly-necessary defense against future
- * naming-confusion foot-guns and against any future widening of the runtime
+ * `cases.score_as_long`) — direct children of `cases`. The strict
+ * collision is at the exact full path `cases.<snake>`. The check
+ * scans the leaf segment everywhere as broader defense against
+ * naming-confusion foot-guns and future widening of the runtime
  * publication scheme.
  *
- * The set of suffixes is exported from `data_view/runtime_fields.ts` as
- * `ALL_TEMPLATE_TYPE_SUFFIXES` — adding a new template type extends the test
- * automatically.
+ * The suffix set is exported from `data_view/runtime_fields.ts` as
+ * `ALL_TEMPLATE_TYPE_SUFFIXES`, so adding a new template type
+ * extends this test automatically.
  */
 const leafEndsInTypeSuffix = (path: string): boolean => {
   const leaf = path.slice(path.lastIndexOf('.') + 1);

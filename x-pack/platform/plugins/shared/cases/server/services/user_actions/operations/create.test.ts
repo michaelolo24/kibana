@@ -7,7 +7,7 @@
 
 import { CASE_USER_ACTION_SAVED_OBJECT } from '../../../../common/constants';
 import { PersistableStateAttachmentTypeRegistry } from '../../../attachment_framework/persistable_state_registry';
-import { V2_NOOP_ACTIVITY_WRITER } from '../../../cases_analytics_v2/writer/activity';
+import { V2_NOOP_ACTIVITY_WRITER } from '../../../cases_analytics_v2';
 import { createSavedObjectsSerializerMock } from '../../../client/mocks';
 import { savedObjectsClientMock } from '@kbn/core-saved-objects-api-server-mocks';
 import { loggerMock } from '@kbn/logging-mocks';

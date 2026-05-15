@@ -12,41 +12,39 @@ import { CasePersistedSeverity, CasePersistedStatus } from '../../common/types/c
 
 /**
  * Shape of a single document indexed into `.cases`. Mirrors
- * `CASE_INDEX_MAPPING` — every field below has a matching mapping, and the
+ * `CASE_INDEX_MAPPING` — every field has a matching mapping, and the
  * mapping is `dynamic: 'strict'` so adding a field here without updating
- * the mapping fails the write loudly.
+ * the mapping fails the write.
  *
- * **Why this is hand-crafted instead of `extends CasePersistedAttributes`.**
- * The analytics doc is deliberately *not* the SO shape with cosmetic
- * tweaks — it's a separately-curated projection chosen for query / Lens
- * ergonomics, with several intentional divergences:
+ * Hand-crafted rather than extending `CasePersistedAttributes` because
+ * the analytics doc is a curated projection with intentional divergences
+ * from the SO:
  *
  *   - `status` / `severity` are persisted as numeric enums on the SO for
- *     sortability + small index footprint; analytics consumers (Lens,
- *     ES|QL) want the human-readable strings, so the writer translates.
- *   - `observables` is **denormalized** — the SO shape is a nested array
- *     of `{ typeKey, value, description }`; the analytics doc collapses
- *     to one keyword array per type for cardinality-friendly aggregations.
- *     `description` is dropped on purpose (free-text observable
- *     descriptions blow up the field count under sustained ingest).
+ *     sortability and a small index footprint; analytics consumers
+ *     (Lens, ES|QL) want the human-readable strings, so the writer
+ *     translates.
+ *   - `observables` is denormalized: the SO is a nested array of
+ *     `{ typeKey, value, description }`; the analytics doc collapses to
+ *     one keyword array per type for cardinality-friendly aggregations.
+ *     `description` is dropped because free-text observable descriptions
+ *     can balloon the field count under sustained ingest.
  *   - `extended_fields` lives in a flattened sub-object with snake-key
  *     suffixes (`<name>_as_<type>`); the SO has no equivalent.
- *   - `@timestamp` and `kibana.space_ids` are derived, not direct
- *     SO attributes.
+ *   - `@timestamp` and `kibana.space_ids` are derived, not direct SO
+ *     attributes.
  *
- * Coupling the two via `extends` would force every additive change to the
- * cases SO into the analytics doc surface — exactly the wrong direction.
- * The analytics-doc shape is a contract with downstream
- * dashboards / queries, so it should evolve on its own merits and break
- * loudly via the `dynamic: 'strict'` mapping when an unintentional new
- * field sneaks in. The schema-drift test
- * (`mappings/schema_drift.test.ts`) catches the inverse mistake — an SO
- * field that was added without an accompanying analytics decision.
+ * Coupling the two via `extends` would force every additive change to
+ * the cases SO into the analytics doc surface. The analytics-doc shape
+ * is a contract with downstream dashboards / queries, so it evolves on
+ * its own merits and the `dynamic: 'strict'` mapping breaks loudly when
+ * an unintentional new field sneaks in. `mappings/schema_drift.test.ts`
+ * catches the inverse mistake — an SO field added without an
+ * accompanying analytics decision.
  *
- * Where the SO shape is the analytics shape (lossless 1:1) and ownership
- * is shared, the type is referenced via
- * `CasePersistedAttributes['<field>']` rather than restated, so the two
- * stay in lockstep without inheritance — see `template` below.
+ * Where the SO shape is the analytics shape (lossless 1:1), the type is
+ * referenced via `CasePersistedAttributes['<field>']` so the two stay in
+ * lockstep without inheritance (see `template` below).
  */
 export interface CaseAnalyticsDoc {
   '@timestamp': string;
@@ -82,18 +80,20 @@ export interface CaseAnalyticsDoc {
     // Tied 1:1 to the SO field — referencing the SO's type prevents the
     // two from drifting silently if a new sub-field lands on the SO.
     template?: CasePersistedAttributes['template'];
-    // `connector` and `external_service` are fully indexed (their sub-fields
-    // are searchable). `customFields` is a typed nested array per the SO
-    // shape. `settings` is opaque (mapped `enabled: false`).
+    // `connector` and `external_service` are fully indexed; their
+    // sub-fields are searchable. `settings` is opaque (mapped
+    // `enabled: false`).
     connector?: unknown;
     external_service?: unknown;
     settings?: unknown;
     // Matches the SO's `customFields` (camelCase) — nested array of
-    // `{ key, type, value }`. The mapping indexes `value` with multi-fields
-    // for typed querying (number, boolean, string, date, ip). Pass-through.
+    // `{ key, type, value }`. The mapping indexes `value` with
+    // multi-fields for typed querying (number, boolean, string, date,
+    // ip).
     customFields?: unknown[];
-    // **Denormalized** from the SO's nested `[{ typeKey, value, description }]`
-    // array to one keyword array per type. See `buildObservables` below.
+    // Denormalized from the SO's nested
+    // `[{ typeKey, value, description }]` array to one keyword array
+    // per type. See `buildObservables` below.
     observables?: Record<string, string[]>;
     extended_fields?: Record<string, unknown>;
   };
@@ -110,11 +110,11 @@ type CaseStatusString = 'open' | 'in-progress' | 'closed';
 type CaseSeverityString = 'low' | 'medium' | 'high' | 'critical';
 
 /**
- * The case SO stores `status` and `severity` as numeric enums for sortability
- * and indexing efficiency. Analytics consumers (Lens, ES|QL) expect human
- * strings. The maps below are the source of truth for the conversion — keep
- * them aligned with `CasePersistedSeverity` / `CasePersistedStatus` in
- * `server/common/types/case.ts`.
+ * Numeric-enum → string conversion for `status` and `severity`. The case
+ * SO stores them as numeric enums for sortability and indexing
+ * efficiency; analytics consumers (Lens, ES|QL) expect human strings.
+ * Keep these maps aligned with `CasePersistedSeverity` /
+ * `CasePersistedStatus` in `server/common/types/case.ts`.
  */
 const STATUS_TO_STRING: Record<CasePersistedStatus, CaseStatusString> = {
   [CasePersistedStatus.OPEN]: 'open',
@@ -130,14 +130,13 @@ const SEVERITY_TO_STRING: Record<CasePersistedSeverity, CaseSeverityString> = {
 };
 
 /**
- * Pure transformation: case saved-object → analytics doc.
- *
- * Side-effect-free, deterministic, safe to call from any context. The
- * round-trip guard in `mappings/schema_drift.test.ts` asserts every
- * emitted dotted path resolves in the mapping.
+ * Pure transformation: case saved-object → analytics doc. Side-effect-
+ * free, deterministic, safe to call from any context. The round-trip
+ * guard in `mappings/schema_drift.test.ts` asserts every emitted dotted
+ * path resolves in the mapping.
  *
  * `@timestamp` is the most recent activity (`updated_at` or, if absent,
- * `created_at`) so Discover/Lens time-picker filtering reads as "show me
+ * `created_at`) so a Discover/Lens time-picker filter reads as "show me
  * cases active in the last 24h".
  */
 export function buildCaseDoc(so: SavedObject<CasePersistedAttributes>): CaseAnalyticsDoc {
@@ -147,9 +146,9 @@ export function buildCaseDoc(so: SavedObject<CasePersistedAttributes>): CaseAnal
   return {
     '@timestamp': timestamp,
     kibana: {
-      // `namespaces` is the multi-namespace API that core SO returns. For
-      // namespace-scoped types like `cases` it'll be a single-element array of
-      // the space id. Default to `['default']` if absent so the field is
+      // `namespaces` is the multi-namespace API core SO returns. For
+      // namespace-scoped types like `cases` it's a single-element array
+      // of the space id. Default to `['default']` so the field is
       // always populated.
       space_ids: so.namespaces ?? ['default'],
     },
@@ -180,22 +179,21 @@ export function buildCaseDoc(so: SavedObject<CasePersistedAttributes>): CaseAnal
       time_to_resolve: a.time_to_resolve,
       incremental_id: a.incremental_id,
       template: a.template,
-      // `connector` and `external_service` are fully indexed per the mapping.
-      // No transformation needed — the SO shape is the analytics shape.
+      // `connector` and `external_service` are fully indexed per the
+      // mapping. The SO shape is the analytics shape, so no transform.
       connector: a.connector,
       external_service: a.external_service,
-      // `settings`: opaque (mapped `enabled: false`); `customFields`: nested
-      // array per SO shape. Both pass through unchanged.
+      // `settings` is opaque (mapped `enabled: false`); `customFields`
+      // is the SO's nested array. Both pass through.
       settings: a.settings,
       customFields: a.customFields,
-      // Denormalize observables — see `buildObservables`.
       observables: buildObservables(a.observables),
       extended_fields: a.extended_fields ?? undefined,
     },
   };
 }
 
-/** Defensive null-handling for the `*_by` user fields. */
+/** Null-safe projection of the SO's `*_by` user fields. */
 function toUserDoc(user: CasePersistedAttributes['created_by'] | null): CaseUserDoc | undefined {
   if (user == null) return undefined;
   return {
@@ -207,17 +205,17 @@ function toUserDoc(user: CasePersistedAttributes['created_by'] | null): CaseUser
 }
 
 /**
- * Regroup observables from the SO's array shape into per-type keyword arrays.
+ * Regroups observables from the SO's array shape into per-type keyword
+ * arrays.
  *
- * Input (from SO):  `[{ typeKey: 'url', value: 'http://...', description: '...' },
- *                     { typeKey: 'url', value: 'http://other' },
- *                     { typeKey: 'ipv4', value: '1.2.3.4' }]`
- * Output:           `{ url: ['http://...', 'http://other'], ipv4: ['1.2.3.4'] }`
+ *   Input:  `[{ typeKey: 'url', value: 'http://...', description: '...' },
+ *             { typeKey: 'url', value: 'http://other' },
+ *             { typeKey: 'ipv4', value: '1.2.3.4' }]`
+ *   Output: `{ url: ['http://...', 'http://other'], ipv4: ['1.2.3.4'] }`
  *
- * Returns `undefined` when there are no observables — keeps the doc small for
- * the common case (most cases have none).
- *
- * `description` is dropped — see file-level mapping comment for the rationale.
+ * Returns `undefined` when there are no observables, so the doc stays
+ * small for the common case. `description` is dropped — see the
+ * file-level comment for the rationale.
  */
 function buildObservables(
   observables: Observable[] | undefined
@@ -228,8 +226,8 @@ function buildObservables(
   let bucketed = 0;
   for (const obs of observables) {
     const type = obs.typeKey;
-    // Skip observables missing a typeKey or value — defensive against
-    // malformed input; we don't want to fail the whole doc build.
+    // Skip observables missing a typeKey or value to avoid failing the
+    // whole doc build on a single malformed entry.
     if (type != null && obs.value != null) {
       const bucket = byType[type] ?? (byType[type] = []);
       bucket.push(String(obs.value));

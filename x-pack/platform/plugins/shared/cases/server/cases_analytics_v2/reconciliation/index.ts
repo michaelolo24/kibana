@@ -40,8 +40,8 @@ interface RegisterReconciliationTaskArgs {
   logger: Logger;
   /**
    * Late-bound deps. Task Manager constructs task runners well after plugin
-   * `setup()` runs — we resolve the SO client and the live writers at run
-   * time via this closure rather than baking them in at registration.
+   * `setup()` runs — the SO client and live writers are resolved at run
+   * time via this closure rather than baked in at registration.
    *
    * Both writers are resolved here so a single tick can run cases then
    * activity sequentially, sharing the SO client (one client → one
@@ -66,10 +66,10 @@ interface ReconciliationTaskState {
   /** Activity-surface cursor (from `runActivityReconciliation`). */
   activity_last_run_at?: string;
   /**
-   * Legacy single-cursor field. Pre-activity-surface ticks wrote this;
-   * we read it as a one-time seed when the new fields are missing so a
-   * mid-flight upgrade doesn't lose its cases-surface position. Future
-   * ticks write only the new fields, so this naturally falls out.
+   * Single-cursor compatibility field, used as a one-time seed for
+   * `cases_last_run_at` when the new field isn't yet present in persisted
+   * state. New writes only emit the per-surface fields above, so this
+   * field naturally falls out over time.
    */
   last_run_at?: string;
 }
@@ -89,24 +89,22 @@ export function registerReconciliationTask({
       title: 'Cases analytics v2 reconciliation',
       description:
         'Periodically re-emits analytics docs for cases updated since the last successful tick. Durability backstop for the fire-and-forget write hooks.',
-      // No auto-retry. The runner already isolates per-surface failures
-      // (a cases-side error doesn't poison the activity walk and vice
-      // versa) and pins only the failing surface's cursor — the next
-      // scheduled tick re-walks the same window naturally. Letting Task
-      // Manager retry inside the same poll interval would just stack a
-      // second failing run on top of an already-stressed cluster (the
-      // most likely cause of the first failure was ES pressure to begin
-      // with). With `maxAttempts: 1`, a failed tick increments the task's
-      // failure metric exactly once, and recovery happens cleanly on the
-      // next interval-driven run.
+      // No auto-retry. The runner isolates per-surface failures (a
+      // cases-side error doesn't break the activity walk and vice versa)
+      // and pins only the failing surface's cursor; the next scheduled
+      // tick re-walks the same window naturally. A retry inside the same
+      // poll interval would stack a second failing run on top of an
+      // already-stressed cluster — usually the cause of the first failure
+      // — and increment the task's failure metric for both. With
+      // `maxAttempts: 1`, recovery happens cleanly on the next
+      // interval-driven run.
       maxAttempts: 1,
       createTaskRunner: ({ taskInstance }) => ({
         run: async () => {
-          // Pull both cursors off the previous tick's state. The legacy
-          // `last_run_at` (pre-activity-surface) seeds `cases_last_run_at`
-          // when the new fields aren't present yet — a one-time upgrade
-          // bridge so we don't re-walk every case after the activity
-          // surface lands.
+          // Pull both cursors off the previous tick's state. The
+          // single-cursor `last_run_at` seeds `cases_last_run_at` when
+          // the per-surface field isn't present yet so the cases-surface
+          // position isn't lost.
           const previousState = (taskInstance.state ?? {}) as ReconciliationTaskState;
           const casesLastRunAt = clampCursorToNotFuture(
             previousState.cases_last_run_at ?? previousState.last_run_at,
@@ -117,12 +115,10 @@ export function registerReconciliationTask({
             logger
           );
 
-          // Carry forward the previous cursors as defaults; each surface
-          // overwrites its own field on success, leaves it pinned on
-          // failure. Per-surface failure isolation: a sustained activity-
-          // index outage doesn't pin the cases-surface cursor (and vice
-          // versa) — each independent surface advances or holds based on
-          // its own walk's outcome.
+          // Carry the previous cursors forward as defaults; each surface
+          // overwrites its own field on success and leaves it pinned on
+          // failure. Per-surface isolation: an outage on one surface
+          // doesn't pin the other's cursor.
           const nextState: Record<string, unknown> = {
             cases_last_run_at: casesLastRunAt,
             activity_last_run_at: activityLastRunAt,
@@ -130,12 +126,9 @@ export function registerReconciliationTask({
 
           const deps = await getRunnerDeps();
 
-          // Cases first. Failures pin the cases cursor and abort the tick
-          // (the throw stops activity from starting); the next tick re-
-          // walks the same cases window. We could swap the order, but
-          // running cases first means a `LOOKUP JOIN .cases ON cases.id`
-          // from any post-activity-walk consumer always sees the joined
-          // case row at least as up-to-date as the activity row that
+          // Cases first. A `LOOKUP JOIN .cases ON cases.id` from any
+          // post-activity-walk consumer then always sees the joined case
+          // row at least as up-to-date as the activity row that
           // referenced it.
           let casesError: unknown;
           try {
@@ -157,8 +150,8 @@ export function registerReconciliationTask({
           }
 
           // Activity second. Independent of cases — runs even if cases
-          // failed, so a stuck cases surface doesn't starve the activity
-          // surface of progress.
+          // failed so a stuck cases surface doesn't starve activity of
+          // progress.
           let activityError: unknown;
           try {
             const result = await runActivityReconciliation({
@@ -179,17 +172,15 @@ export function registerReconciliationTask({
           }
 
           // Persist whatever progress each surface made. Even with a
-          // failure on one side, the successful side's new cursor lands
-          // — so a 30-minute outage on the activity surface doesn't
-          // reset the cases-surface cursor and force a tenant-wide
-          // re-walk on recovery.
+          // failure on one side, the successful side's new cursor lands,
+          // so an extended outage on one surface doesn't force a
+          // tenant-wide re-walk of the other on recovery.
           if (casesError != null || activityError != null) {
             // Surface the failure via Task Manager's `taskRunError` so
-            // metrics still reflect the per-tick outcome — but return
-            // shape rather than throw so the SUCCESSFUL surface's new
-            // cursor still persists. Throwing would discard the entire
-            // `nextState` payload, forcing the next tick to re-walk the
-            // surface that just succeeded.
+            // task metrics reflect the per-tick outcome. Return rather
+            // than throw so the successful surface's new cursor still
+            // persists; throwing would discard `nextState` and force the
+            // next tick to re-walk the surface that just succeeded.
             const composite =
               casesError != null && activityError != null
                 ? new Error(
@@ -211,10 +202,10 @@ export function registerReconciliationTask({
           return { state: nextState };
         },
         cancel: async () => {
-          // The runners are just SO walks and writer dispatch — no
-          // long-lived resources to release. Task Manager calling cancel
-          // just stops the next page fetch; in-flight writer dispatches
-          // complete on their own retry budget.
+          // The runners are SO walks plus writer dispatches — no
+          // long-lived resources to release. A cancel just stops the
+          // next page fetch; in-flight writer dispatches finish on their
+          // own retry budget.
         },
       }),
     },
@@ -267,13 +258,12 @@ export async function scheduleReconciliationTask({
 
 interface ResetReconciliationTaskArgs extends ScheduleReconciliationTaskArgs {
   /**
-   * State to force the persisted task SO to after the reset. The `/reset`
-   * route uses this to seed the next periodic tick's `last_run_at` cursor
-   * to the wall-clock at which it ran its direct full walk — so future
-   * periodic ticks walk only the post-walk delta instead of re-emitting
-   * every case every interval. Empty (default `{}`) means the next tick
-   * runs as a full backfill, which is rarely what you want (the runner's
-   * default cadence is 30m and a tenant-wide walk every 30m is expensive).
+   * State to force the persisted task SO to after the reset. Typically
+   * carries the per-surface cursors seeded from a successful walk so
+   * future periodic ticks walk only the post-walk delta instead of
+   * re-emitting every case every interval. Omitting a per-surface
+   * cursor (e.g. on a failed walk) leaves that surface cursorless, so
+   * the next periodic tick falls back to a full walk for it.
    */
   initialState?: Record<string, unknown>;
 }
@@ -281,31 +271,28 @@ interface ResetReconciliationTaskArgs extends ScheduleReconciliationTaskArgs {
 /**
  * Resets the reconciliation task's persisted state.
  *
- * **Two steps, both required:**
- *   1. `scheduleReconciliationTask` (ensure-scheduled). No-op when the task
- *      already exists; creates it with the configured interval otherwise.
- *      Guarantees a task SO is on disk for step 2 to update.
+ * Two steps, both required:
+ *   1. `scheduleReconciliationTask` (ensure-scheduled). No-op when the
+ *      task already exists; creates it with the configured interval
+ *      otherwise. Guarantees a task SO is on disk for step 2 to update.
  *   2. `bulkUpdateState`. Atomically rewrites the persisted state to
- *      `initialState`. Unlike `remove` + `ensureScheduled` (the previous
- *      implementation), this:
- *        - does NOT depend on `remove` succeeding for non-404 reasons —
- *          a transient cluster error during remove used to silently leave
- *          the SO alive with stale state, and the subsequent
- *          `ensureScheduled` no-oped because the SO still existed. The
- *          symptom was that `/reset` returned 200 but the next periodic
- *          tick inherited the old cursor and only re-emitted cases
- *          touched after that point, making every never-patched case
- *          invisible until someone happened to edit it.
- *        - does NOT race a freshly-scheduled task SO against an in-flight
- *          tick that's about to write its (old) state back to the same id.
+ *      `initialState`. Preferred over a `remove` + `ensureScheduled`
+ *      sequence because:
+ *        - it doesn't depend on the remove succeeding (a transient
+ *          cluster error during remove would leave the SO alive with
+ *          stale state, and `ensureScheduled` would no-op);
+ *        - it doesn't race a freshly-scheduled task SO against an
+ *          in-flight tick about to write its old state back to the same
+ *          id.
  *
- * **Race with an in-flight tick:** `bulkUpdateState` reads + writes the
- * SO non-atomically — a tick that completes between our read and write
- * (or a tick that starts mid-update) can still clobber our cursor. That's
- * acceptable here: the runner's filter has an unconditional
- * `updated_at IS NULL` branch (see `runner.ts`), so any case missed by
- * the clobbering tick still gets re-emitted on the next tick until it
- * gets patched and falls into the cursor-based branch.
+ * Race with an in-flight tick: `bulkUpdateState` reads and writes the
+ * SO non-atomically, so a tick that completes between this read and
+ * write (or starts mid-update) can clobber the persisted cursor. The
+ * data effect is benign because the reset task's walk has already
+ * repopulated `.cases` and `.cases-activity` from the SO source of
+ * truth — at worst, the next periodic tick walks a slightly wider
+ * window than necessary, and `writer.upsertCase` /
+ * `activityWriter.upsertAction` are idempotent on `_id`.
  */
 export async function resetReconciliationTask({
   taskManager,
@@ -326,14 +313,14 @@ export async function resetReconciliationTask({
 }
 
 /**
- * Guard against a corrupted persisted cursor that points to a time later
- * than the current wall clock. This can happen from clock skew between
- * Kibana nodes or from manual SO tampering. Without the clamp,
- * incremental reconciliation silently freezes until wall time catches up.
+ * Guards against a persisted cursor that points later than the current
+ * wall clock — possible from clock skew between Kibana nodes or manual
+ * SO edits. Without the clamp, incremental reconciliation freezes until
+ * wall time catches up.
  *
- * Returns the original cursor when valid, otherwise `undefined` (forces
- * the next tick to walk every case as a backfill — slower than incremental
- * but correct, vs. silently doing nothing).
+ * Returns the original cursor when valid, otherwise `undefined` so the
+ * next tick walks every case as a backfill (slower than incremental but
+ * correct).
  *
  * Exported for tests.
  */

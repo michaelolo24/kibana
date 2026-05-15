@@ -24,11 +24,12 @@ import {
 /**
  * End-to-end coverage of the fire-and-forget write path:
  *
- *     cases SO mutation → CasesService hook → CasesAnalyticsV2Writer → .cases
+ *     cases SO mutation → CasesService hook
+ *       → CasesAnalyticsV2Writer → .cases
  *
- * Tests assert the analytics doc appears, reflects updates, and is removed on
- * delete — the round-trip unit tests can't cover ES index semantics, doc
- * refresh timing, or the strict mapping accepting the doc shape.
+ * Tests assert the analytics doc appears, reflects updates, and is
+ * removed on delete — unit tests can't cover ES index semantics,
+ * doc refresh timing, or the strict mapping accepting the doc shape.
  */
 export default ({ getService }: FtrProviderContext): void => {
   const supertest = getService('supertest');
@@ -38,8 +39,9 @@ export default ({ getService }: FtrProviderContext): void => {
 
   describe('writer ES round-trip', () => {
     afterEach(async () => {
-      // Clean SOs first, then reset the analytics surface — reset's
-      // follow-up reconciliation has nothing to find that way.
+      // Clean SOs first, then reset the analytics surface —
+      // reset's follow-up reconciliation has nothing to find that
+      // way.
       await deleteAllCaseItems(es);
       await resetV2(supertest);
     });
@@ -77,8 +79,8 @@ export default ({ getService }: FtrProviderContext): void => {
         (source) => source.cases.title === 'updated title'
       );
 
-      // Confirm it's still a single doc, not two — the writer is supposed to
-      // upsert on the same `_id`.
+      // Confirm it's still a single doc, not two — the writer
+      // upserts on the same `_id`.
       await es.indices.refresh({ index: '.cases' });
       const countResult = await es.count({ index: '.cases', q: `cases.id:"${created.id}"` });
       expect(countResult.count).to.eql(1);
@@ -98,8 +100,8 @@ export default ({ getService }: FtrProviderContext): void => {
     });
 
     it('deleting an already-deleted case is a no-op', async () => {
-      // The writer's `doDeleteCase` swallows 404s — re-issuing a delete
-      // shouldn't produce an error or log noise.
+      // The writer's `doDeleteCase` swallows 404s; re-issuing a
+      // delete shouldn't produce an error or log noise.
       const created = await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, auth);
       await waitForAnalyticsCase(es, created.id);
 
@@ -112,9 +114,9 @@ export default ({ getService }: FtrProviderContext): void => {
 
       await waitForAnalyticsCase(es, created.id, { expect: 'absent' });
 
-      // Second delete: SO already gone, returns 204. The writer fires
-      // again (per-batch behaviour), hits 404 on `.cases`, swallows it.
-      // Just assert the API call still succeeds.
+      // Second delete: SO already gone, returns 204. The writer
+      // fires again (per-batch behavior), hits 404 on `.cases`,
+      // and swallows it. Just assert the API call still succeeds.
       await supertestWithoutAuth
         .delete(url)
         .set('kbn-xsrf', 'true')

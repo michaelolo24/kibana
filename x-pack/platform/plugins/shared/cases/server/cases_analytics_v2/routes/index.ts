@@ -28,22 +28,22 @@ import type { CasesAnalyticsV2WriterContract } from '../writer';
 import type { CasesActivityV2WriterContract } from '../writer/activity';
 
 /**
- * Shape surfaced under `/state.active_reset` for the live or most-
- * recently-failed reset task. `null` when no reset task SO exists —
- * Task Manager auto-deletes one-shot tasks on success, so `null`
- * means either "no reset has ever been scheduled" or "the last
- * reset succeeded and was cleaned up." A populated value with
- * `status: 'failed'` is the operator's signal that the last reset
- * threw on both surfaces; the periodic task continues to fill in
- * the gap regardless.
+ * Shape surfaced under `/state.active_reset` for the live or
+ * most-recently-failed reset task. `null` when no reset task SO exists
+ * — Task Manager auto-deletes one-shot tasks on success, so `null`
+ * means either "no reset has ever been scheduled" or "the last reset
+ * succeeded and was cleaned up". A populated value with
+ * `status: 'failed'` is the administrator's signal that the last reset
+ * threw on both surfaces; the periodic task continues to fill in the
+ * gap regardless.
  *
  * `state` evolves over the task's lifetime:
  *   - At schedule time (before any throttled write): `{}`.
- *   - During the walk: `phase` + `cases_processed` /
- *     `activity_processed` + `started_at` populate progressively
+ *   - During the walk: `phase`, `cases_processed`,
+ *     `activity_processed`, and `started_at` populate progressively
  *     via the reset task's wall-clock-throttled progress writer.
- *   - At task completion: full `ResetTaskState` written by
- *     Task Manager from the runner's return value, including
+ *   - At task completion: full `ResetTaskState` written by Task
+ *     Manager from the runner's return value, including
  *     `cases_cursor`, `activity_cursor`, `completed_at`, and any
  *     per-surface error messages.
  */
@@ -59,15 +59,15 @@ interface ActiveResetSnapshot {
 const DATA_VIEW_SO_TYPE = 'index-pattern';
 
 /**
- * Authorization shape for every administrator route in this module.
- * **Superuser-only** — these aren't customer-facing, and routing them
+ * Authorization for every administrator route in this module.
+ * Superuser-only — these aren't customer-facing, and routing them
  * through a Kibana feature privilege would broaden the attack surface
- * (anyone holding that feature could `/reset` the index). Cluster
+ * (anyone holding that feature could `/reset` the index). The cluster
  * privilege keeps the model trivial.
  *
- * Not `as const` because `core.http.createRouter`'s `RouteSecurity` shape
- * requires mutable arrays — deep-readonly inference rejects literal
- * assignment otherwise.
+ * Not `as const` because `core.http.createRouter`'s `RouteSecurity`
+ * shape requires mutable arrays — deep-readonly inference rejects a
+ * literal assignment otherwise.
  */
 const SUPERUSER_AUTHZ = {
   authz: {
@@ -79,74 +79,71 @@ interface RegisterArgs {
   core: CoreSetup;
   logger: Logger;
   /**
-   * Late-bound — Task Manager's start contract isn't available at setup
-   * time. The routes call `getTaskManager()` inside their handlers, so the
-   * registration site can pass a closure that resolves once start runs.
+   * Late-bound: Task Manager's start contract isn't available at setup
+   * time. The routes call `getTaskManager()` inside their handlers,
+   * resolving the value once start runs.
    */
   getTaskManager: () => TaskManagerStartContract | null;
   /**
-   * Late-bound — the internal SO client is constructed during plugin
-   * `start()`, after routes are registered in `setup()`. `/reset` needs an
-   * unscoped client to delete per-space `index-pattern` SOs across
-   * namespaces; the request-scoped client (`coreContext.savedObjects.client`)
-   * is bound by the spaces extension to the requester's namespace and 404s
-   * on any data view that lives elsewhere — even with `force: true`,
-   * because the spaces extension performs the existence check before
-   * delegating the delete.
+   * Late-bound: the internal SO client is constructed during plugin
+   * `start()`, after routes are registered in `setup()`. `/reset`
+   * needs an unscoped client to delete per-space `index-pattern` SOs
+   * across namespaces; the request-scoped client
+   * (`coreContext.savedObjects.client`) is bound by the spaces
+   * extension to the requester's namespace and 404s on any data view
+   * that lives elsewhere — even with `force: true`, because the
+   * spaces extension performs the existence check before delegating
+   * the delete.
    */
   getInternalSavedObjectsClient: () => SavedObjectsClientContract | null;
   /**
-   * Late-bound — the analytics writer is constructed during plugin
-   * `start()` (it holds the live ES client). `/reset` calls
-   * `runReconciliation` directly with `lastRunAt: undefined` (bypassing
-   * Task Manager's `runSoon` — see the reset handler for the rationale)
-   * and needs the writer to dispatch the full re-walk's bulk upserts.
+   * Late-bound: the analytics writer is constructed during plugin
+   * `start()` (it holds the live ES client). The route handler gates
+   * on writer availability so it can return a clear 503 when the reset
+   * task would have nothing usable to walk against.
    */
   getWriter: () => CasesAnalyticsV2WriterContract | null;
-  /**
-   * Activity-surface companion to `getWriter`. Same lifetime + late-bind
-   * semantics. `/reset` calls `runActivityReconciliation` directly so a
-   * full reset rebuilds both surfaces in one administrator action.
-   */
+  /** Activity-surface companion to `getWriter`. Same lifetime and semantics. */
   getActivityWriter: () => CasesActivityV2WriterContract | null;
   /**
-   * Wipes the data view service's in-memory "bootstrapped spaces" cache.
-   * `/reset` deletes per-space data views directly via the SO API, so the
-   * data view sub-service's process-local cache must be cleared too —
-   * otherwise it would still believe those spaces had been bootstrapped
-   * and skip re-creation on the next request. No-op if v2 hasn't started.
+   * Wipes the data view service's in-memory bootstrapped-spaces cache.
+   * `/reset` deletes per-space data views directly via the SO API, so
+   * the cache must be cleared too — otherwise it would still claim
+   * those spaces are bootstrapped and skip re-creation on the next
+   * request. No-op if v2 hasn't started.
    */
   clearDataViewBootstrapCache: () => void;
   /**
-   * Resolved config value for `xpack.cases.analyticsV2.enabled` — surfaced
-   * through `/state` so administrators can confirm whether v2 is active.
+   * Resolved config value for `xpack.cases.analyticsV2.enabled`,
+   * surfaced through `/state` so administrators can confirm whether v2
+   * is active.
    */
   enabled: boolean;
   /**
-   * Resolved config value for `xpack.cases.analyticsV2.enable_debug_mode`.
-   * Gates the **mutating** administrator routes (`/reset` and
-   * `/reconcile/run_soon`) at registration time — when false, neither
-   * route is registered, and an HTTP request to either path returns 404.
-   * The read-only `/state` route is always registered when v2 is on; a
-   * future Case Settings page polls it for health info, so gating /state
-   * would break that integration.
+   * Resolved config value for
+   * `xpack.cases.analyticsV2.enable_admin_routes`. Gates the mutating
+   * administrator routes (`/reset` and `/reconcile/run_soon`) at
+   * registration time — when false, neither route is registered and a
+   * request to either path returns 404. The read-only `/state` route
+   * is always registered when v2 is on (a Case Settings page polls it
+   * for health info; gating it would break that integration).
    *
-   * Why route-registration gating (and not a runtime 403): the gated
-   * routes operate globally across every space but are invocable from a
-   * single space's URL — a misclick from a `default`-space operator
-   * wipes case data views in every other space. A 404 makes the gated
-   * surface invisible to space-aware tenants that haven't opted in,
-   * which is the right default for a debug-only surface.
+   * Route-registration gating (vs a runtime 403) is preferred because
+   * these routes operate globally across every space but are invoked
+   * from a single space's URL — a misclick from a `default`-space
+   * administrator wipes case data views in every other space. A 404 makes
+   * the gated surface invisible to tenants that haven't opted in.
    */
-  enableDebugMode: boolean;
+  enableAdminRoutes: boolean;
 }
 
 /**
- * Administrator support routes for cases-analytics v2. **Superuser-only**
- * (see `SUPERUSER_AUTHZ`); registered directly on `core.http.createRouter()`
- * so they bypass the cases client surface, which doesn't expose the
- * analytics subsystem. Missing dependencies (e.g. Task Manager not yet
- * available) return `503` so callers can retry.
+ * Administrator support routes for cases-analytics v2. Superuser-only
+ * (see `SUPERUSER_AUTHZ`); registered directly on
+ * `core.http.createRouter()` so they bypass the cases client surface,
+ * which doesn't expose the analytics subsystem. Missing dependencies
+ * (e.g. Task Manager not yet available) return `503` so callers can
+ * retry.
  */
 export const registerCasesAnalyticsV2Routes = ({
   core,
@@ -157,7 +154,7 @@ export const registerCasesAnalyticsV2Routes = ({
   getActivityWriter,
   clearDataViewBootstrapCache,
   enabled,
-  enableDebugMode,
+  enableAdminRoutes,
 }: RegisterArgs): void => {
   const router = core.http.createRouter();
   const log = logger.get('routes');
@@ -174,8 +171,8 @@ export const registerCasesAnalyticsV2Routes = ({
       options: { access: 'internal' },
     },
     async (context, _request, response) => {
-      // Pull the live reconciliation task to surface its last run + state
-      // (which holds both per-surface cursors + processed counts).
+      // Pull the live reconciliation task to surface its last run and
+      // state (which holds both per-surface cursors and processed counts).
       const taskManager = getTaskManager();
       let lastRun: {
         cases_last_run_at?: string;
@@ -195,11 +192,11 @@ export const registerCasesAnalyticsV2Routes = ({
           });
           const task = tasks.docs[0];
           if (task != null) {
-            // Read both per-surface cursors. Falls back to the legacy
-            // single-cursor field for tasks scheduled before the activity
-            // surface landed (read-only fallback — the runner itself
-            // already migrates writes to the new fields on first
-            // successful tick).
+            // Read both per-surface cursors. The single-cursor
+            // `last_run_at` is a one-time seed for `cases_last_run_at`
+            // when the per-surface field isn't yet present in
+            // persisted state; new ticks only emit the per-surface
+            // fields, so this falls out over time.
             const state = (task.state ?? {}) as {
               cases_last_run_at?: string;
               activity_last_run_at?: string;
@@ -224,11 +221,10 @@ export const registerCasesAnalyticsV2Routes = ({
           );
         }
 
-        // Reset task fetch is by ID (singleton). 404 → null (no reset
-        // scheduled, or the last one succeeded and Task Manager
-        // auto-removed it). A populated value with `status: 'failed'`
-        // is how operators detect that the last reset threw — see
-        // `RunFunction` rationale in `reset_task.ts`.
+        // Reset task fetch is by ID (singleton). 404 → null (no
+        // reset scheduled, or the last one succeeded and Task Manager
+        // removed it). A populated value with `status: 'failed'` is
+        // how administrators detect that the last reset threw.
         const resetTask = await fetchResetTask({ taskManager, logger: log });
         if (resetTask != null) {
           activeReset = {
@@ -239,27 +235,25 @@ export const registerCasesAnalyticsV2Routes = ({
                 ? resetTask.scheduledAt.toISOString()
                 : (resetTask.scheduledAt as unknown as string),
             attempts: resetTask.attempts,
-            // Cast through unknown — Task Manager's `state` is
-            // `Record<string, unknown>` at the type layer; we know the
-            // shape because we own the task type's runner. While the
-            // task is `idle` (just scheduled), `state` is `{}`; while
-            // `running`, the reset task's wall-clock-throttled
-            // progress writer pushes partial state every ~30s
-            // (`phase`, `cases_processed`, `activity_processed`,
-            // `started_at`); after the runner returns, it's a fully
-            // populated `ResetTaskState` with `phase: 'completed'`
-            // (or the partial mid-walk state on a thrown total
-            // failure).
+            // Task Manager's `state` is `Record<string, unknown>` at
+            // the type layer; the shape is owned by this task type's
+            // runner. While `idle`, state is `{}`; while `running`,
+            // the throttled progress writer pushes partial state
+            // every ~30s (`phase`, `cases_processed`,
+            // `activity_processed`, `started_at`); after the runner
+            // returns, state is a populated `ResetTaskState` (or the
+            // partial mid-walk state on a thrown total failure).
             state: (resetTask.state ?? {}) as Partial<ResetTaskState> | Record<string, never>,
           };
         }
       }
 
-      // Check both indices' existence so /state reports each bootstrap's
-      // result independently. `ensure*Index` logs-and-continues on
-      // failure, so a partial bootstrap (one index up, one missing) is
-      // possible — surfacing per-index status here saves a wild-goose
-      // chase. Both lookups race in parallel so /state stays cheap.
+      // Check both indices' existence so `/state` reports each
+      // bootstrap's result independently. `ensure*Index` logs and
+      // continues on failure, so a partial bootstrap (one index up,
+      // one missing) is possible — surfacing per-index status here
+      // makes that visible. Both lookups run in parallel so `/state`
+      // stays cheap.
       let casesIndexExists = false;
       let activityIndexExists = false;
       try {
@@ -282,10 +276,9 @@ export const registerCasesAnalyticsV2Routes = ({
       return response.ok({
         body: {
           enabled,
-          // Per-surface index status. Top-level `index` / `index_exists`
-          // retained as backwards-compatible aliases pointing at the
-          // cases surface — pre-activity callers reading /state in the
-          // wild keep working.
+          // Top-level `index` / `index_exists` are aliases pointing at
+          // the cases surface, alongside the per-surface block under
+          // `surfaces`.
           index: CASE_INDEX_NAME,
           index_exists: casesIndexExists,
           surfaces: {
@@ -304,7 +297,7 @@ export const registerCasesAnalyticsV2Routes = ({
           },
           // Live or most-recently-failed reset task. `null` means
           // either "no reset scheduled" or "last reset succeeded and
-          // its SO was auto-removed." A populated value with
+          // its SO was auto-removed". A populated value with
           // `status: 'failed'` is the failure signal.
           active_reset: activeReset,
         },
@@ -313,13 +306,13 @@ export const registerCasesAnalyticsV2Routes = ({
   );
 
   // The two routes below mutate subsystem state cluster-wide and are
-  // therefore gated behind `xpack.cases.analyticsV2.enable_debug_mode`.
-  // When the flag is off, neither route is registered — requests to
-  // these paths return 404. See the `enableDebugMode` JSDoc on
-  // `RegisterArgs` for the (route-registration vs runtime-403) rationale.
-  if (!enableDebugMode) {
+  // gated behind `xpack.cases.analyticsV2.enable_admin_routes`. When the
+  // flag is off, neither route is registered and requests return 404.
+  // See the `enableAdminRoutes` JSDoc on `RegisterArgs` for the
+  // route-registration-vs-runtime-403 rationale.
+  if (!enableAdminRoutes) {
     log.debug(
-      'cases-analyticsV2 debug-mode routes (/reset, /reconcile/run_soon) are NOT registered; set xpack.cases.analyticsV2.enable_debug_mode: true to enable.'
+      'cases-analyticsV2: debug-mode routes (/reset, /reconcile/run_soon) are NOT registered; set xpack.cases.analyticsV2.enable_admin_routes: true to enable.'
     );
     return;
   }
@@ -341,9 +334,9 @@ export const registerCasesAnalyticsV2Routes = ({
         });
       }
       try {
-        // `runSoon` expects the task **instance** id (the persisted task SO's
-        // id), not the task **type**. The singleton task instance id is
-        // exported from the reconciliation module.
+        // `runSoon` expects the task instance id (the persisted task
+        // SO's id), not the task type. The singleton task instance id
+        // is exported from the reconciliation module.
         const result = await taskManager.runSoon(RECONCILIATION_TASK_ID);
         return response.ok({ body: { id: RECONCILIATION_TASK_ID, result } });
       } catch (err) {
@@ -359,29 +352,26 @@ export const registerCasesAnalyticsV2Routes = ({
 
   // POST /internal/cases/_analyticsV2/reset
   //
-  // Full subsystem reset: drops both analytics indices, recreates them,
-  // deletes every per-space `Cases` data view, clears the data view
-  // bootstrap cache, then schedules a one-shot Task Manager job to
-  // backfill both indices from the SO source of truth. **Returns 202
-  // before the backfill begins** — the backfill runs durably in the
-  // background and the operator polls `/state.active_reset` for
+  // Full subsystem reset: drops both analytics indices, recreates
+  // them, deletes every per-space `Cases` data view, clears the data
+  // view bootstrap cache, then schedules a one-shot Task Manager job
+  // to backfill both indices from the SO source of truth. Returns
+  // 202 before the backfill begins — the backfill runs durably in
+  // the background and the administrator polls `/state.active_reset` for
   // progress / completion.
   //
-  // **Why async (vs the previous in-handler walk).** At small/medium
-  // tenant sizes the in-handler walk fit inside Kibana's default 120s
-  // request timeout, but at 1000+ spaces the walk grew to multi-minute
-  // territory and at 10K spaces was estimated 75+ minutes — well past
-  // any reasonable HTTP request budget. Moving the walk into a
-  // dedicated Task Manager job (`cases.analyticsV2.fullReset`) means:
+  // The backfill runs as a Task Manager job
+  // (`cases.analyticsV2.fullReset`) so that:
   //   - `/reset` returns in seconds at any tenant size.
-  //   - The walk is durable across Kibana node restarts (Task Manager
-  //     re-claims a stuck task on another node).
+  //   - The walk is durable across Kibana node restarts (Task
+  //     Manager re-claims a stuck task on another node).
   //   - Two `/reset` calls can't race — `scheduleResetTask` removes
   //     any in-flight reset task SO before scheduling a fresh one.
-  //   - A configurable timeout (`xpack.cases.analyticsV2.resetTaskTimeoutMinutes`)
-  //     replaces "implicit HTTP request timeout = walk timeout".
-  //   - A configurable inter-page delay (`xpack.cases.analyticsV2.resetPageDelayMs`)
-  //     lets operators throttle bulk-write pressure on shared clusters.
+  //   - The walk timeout is configurable via
+  //     `xpack.cases.analyticsV2.resetTaskTimeoutMinutes`.
+  //   - An inter-page delay
+  //     (`xpack.cases.analyticsV2.resetPageDelayMs`) lets administrators
+  //     throttle bulk-write pressure on shared clusters.
   //
   // Steps 1–4 (drop, recreate, delete data views, clear cache) stay
   // in-handler because they're `O(spaces)` not `O(documents)` and
@@ -398,14 +388,13 @@ export const registerCasesAnalyticsV2Routes = ({
       const taskManager = getTaskManager();
       const coreContext = await context.core;
       const esClient = coreContext.elasticsearch.client.asInternalUser;
-      // Per-space data view cleanup needs the unscoped SO client (see
-      // `getInternalSavedObjectsClient` JSDoc). The reset task itself
-      // resolves writers + SO client from its own getRunnerDeps closure
-      // — but we still gate the route on writers being available so
-      // operators get a clear 503 here rather than scheduling a task
-      // that immediately throws when its getRunnerDeps fires. Same
-      // gate as before; the writers themselves are no longer used in
-      // the handler body.
+      // Per-space data view cleanup needs the unscoped SO client
+      // (see `getInternalSavedObjectsClient` JSDoc). The reset task
+      // itself resolves writers and SO client from its own
+      // getRunnerDeps closure, but the route is still gated on
+      // writers being available so administrators get a clear 503 here
+      // rather than scheduling a task that immediately throws when
+      // its getRunnerDeps fires.
       const internalSoClient = getInternalSavedObjectsClient();
       const writer = getWriter();
       const activityWriter = getActivityWriter();
@@ -425,9 +414,9 @@ export const registerCasesAnalyticsV2Routes = ({
       }
 
       try {
-        // 1. Drop existing indices. Both in parallel — they're
-        //    independent. 404 is fine on either (reset on an empty
-        //    cluster, or only one index ever bootstrapped).
+        // 1. Drop existing indices in parallel. 404 is fine on
+        //    either (reset on an empty cluster, or only one index
+        //    ever bootstrapped).
         await Promise.all([
           esClient.indices
             .delete({ index: CASE_INDEX_NAME })
@@ -445,45 +434,45 @@ export const registerCasesAnalyticsV2Routes = ({
             }),
         ]);
 
-        // 2. Recreate both indices via the same bootstrap used at plugin
-        //    start. Idempotent and independent; parallel for symmetry
-        //    with step 1.
+        // 2. Recreate both indices via the same bootstrap used at
+        //    plugin start. Idempotent and independent; parallel for
+        //    symmetry with step 1.
         await Promise.all([
           ensureCaseIndex({ esClient, logger: log }),
           ensureActivityIndex({ esClient, logger: log }),
         ]);
 
-        // 3. Delete every per-space data view. The "Case Analytics" data
-        //    view spans both `.cases` and `.cases-activity` so a single
-        //    sweep covers both surfaces. See `getInternalSavedObjectsClient`
-        //    JSDoc for why the unscoped client is required.
+        // 3. Delete every per-space data view. The "Case Analytics"
+        //    data view spans both `.cases` and `.cases-activity`, so
+        //    a single sweep covers both surfaces. See
+        //    `getInternalSavedObjectsClient` JSDoc for why the
+        //    unscoped client is required.
         const deletedDataViews = await deleteAllPerSpaceCasesDataViews(internalSoClient, log);
 
-        // 4. Clear the data view sub-service's in-memory bootstrapped-spaces
-        //    cache. Without this, the next request in a previously-bootstrapped
-        //    space would skip the ensure check and the user would see no
-        //    data view until process restart.
+        // 4. Clear the data view sub-service's in-memory
+        //    bootstrapped-spaces cache. Without this, the next
+        //    request in a previously-bootstrapped space would skip
+        //    the ensure check and the user would see no data view
+        //    until process restart.
         clearDataViewBootstrapCache();
 
         // 5. Schedule the one-shot backfill. `scheduleResetTask`
-        //    `removeIfExists`-then-schedules so a second `/reset`
-        //    call cleanly replaces an in-flight reset (latest-wins
-        //    semantics — see the function's JSDoc). The returned
-        //    task instance is included in the response so the
-        //    operator has the task ID for polling `/state` later.
+        //    removes any existing reset task SO before scheduling a
+        //    fresh one, so a second `/reset` cleanly replaces an
+        //    in-flight reset (latest-wins).
         const scheduledTask = await scheduleResetTask({ taskManager, logger: log });
 
         return response.custom({
           // 202 Accepted: the destructive cleanup succeeded
-          // synchronously (indices dropped + recreated, data views
-          // wiped, cache cleared) — but the backfill walk is still
-          // running, so we don't return 200. `/state.active_reset`
-          // is the canonical progress + completion surface.
+          // synchronously (indices dropped and recreated, data
+          // views wiped, cache cleared) but the backfill walk is
+          // still running. `/state.active_reset` is the canonical
+          // progress and completion surface.
           statusCode: 202,
           body: {
             reset: CASE_INDEX_NAME,
             data_views_deleted: deletedDataViews,
-            // The reset task ID + scheduled-at give the operator
+            // The reset task ID and scheduled-at give the administrator
             // everything they need to poll `/state.active_reset`
             // and correlate logs.
             reset_task: {
@@ -497,7 +486,7 @@ export const registerCasesAnalyticsV2Routes = ({
             },
             // Per-surface confirmation of the synchronous bootstrap
             // step. The walk hasn't started yet — `processed` and
-            // `next_reconciliation_cursor` will be populated on the
+            // `next_reconciliation_cursor` are populated on the
             // task SO once the walk completes.
             surfaces: {
               cases: { reset: CASE_INDEX_NAME },
@@ -507,7 +496,7 @@ export const registerCasesAnalyticsV2Routes = ({
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
-        log.warn(`reset failed: ${message}`);
+        log.warn(`cases-analyticsV2: reset failed: ${message}`);
         return response.customError({
           statusCode: 500,
           body: { message: `Failed to reset cases-analyticsV2 index: ${message}` },
@@ -518,54 +507,44 @@ export const registerCasesAnalyticsV2Routes = ({
 };
 
 /**
- * Page through every data view SO across every space and delete the ones
- * whose id begins with `CASE_DATA_VIEW_ID_PREFIX`. Returns the count of
- * deletions for the response body. Per-item errors log at WARN and the
- * walk continues — best-effort cleanup is preferred over aborting on a
- * single failure.
+ * Page through every data view SO across every space and delete the
+ * ones whose id begins with `CASE_DATA_VIEW_ID_PREFIX`. Returns the
+ * count of deletions for the response body. Per-item errors log at
+ * WARN and the walk continues — best-effort cleanup is preferred
+ * over aborting on a single failure.
  *
- * Two-pass shape:
- *   1. Walk every page of `index-pattern` SOs, collecting only the ids
- *      that match our prefix. No deletes inside the loop.
+ * The walk is two-pass:
+ *   1. Walk every page of `index-pattern` SOs, collecting matching ids.
  *   2. Delete the collected ids.
- * A single-pass implementation that deleted while iterating would shift
- * subsequent page offsets — items at positions `[N*PAGE_SIZE..]` would
- * move onto an already-walked page and be skipped. Since `/reset` is a
- * rare administrator action and missed data views are lazily recreated on
- * the next cases request in that space, this isn't a correctness bug for
- * the user — but it shows up as `data_views_deleted` undercounts in the
- * response and as orphaned SOs in `.kibana`, both of which a tenant-scale
- * `/reset` would surface.
+ * A single-pass walk that deleted while iterating would shift
+ * subsequent page offsets and skip items, which would show up as
+ * `data_views_deleted` undercounts and orphaned SOs in `.kibana`.
  *
  * Notes:
- *   - **Must be called with an internal (unscoped) SO client.** A request-
- *     scoped client passes through the spaces extension, which scopes
- *     `delete` to the requester's namespace and 404s on any data view that
- *     doesn't live in that exact space — even with `force: true`, because
- *     the spaces extension's existence check runs before delegating the
- *     delete to the underlying repository. The caller (`/reset` handler)
- *     resolves the internal client from the v2 service's start-time
- *     bindings.
- *   - `index-pattern` is a multi-namespace SO type (`namespaceType: 'multiple'`).
- *     **Each delete is issued against the SO's own namespace**, not the
- *     internal client's implicit default. The SO repository's `delete`
- *     preflight (`preflightCheckNamespaces` in
- *     `core/saved-objects/api-server-internal/.../delete.ts`) returns
- *     `found_outside_namespace` and surfaces as a 404 if the SO's
- *     `namespaces` array doesn't include the namespace we pass — and the
- *     internal client's implicit default is `'default'`, so any data view
- *     that lives in `analytics-1`, `analytics-2`, etc. would never be
- *     deletable without this. `force: true` only widens the multi-share
- *     case (SO in N spaces); it does NOT bypass the preflight on the
- *     namespace mismatch. Together they handle every shape — single-space
- *     view (the common case), multi-space share (via `force`), and the
- *     cross-namespace cleanup path (via the explicit namespace arg).
- *   - **404 on delete is treated as success.** An unscoped client should
- *     not normally 404 on an id we just enumerated with its namespace,
- *     but a concurrent `/reset` (or out-of-band SO deletion via the Stack
- *     Management UI) between pass 1 and pass 2 can race the delete. The
- *     desired end state is "data view gone," which the 404 path already
- *     satisfies.
+ *   - Must be called with an internal (unscoped) SO client. A
+ *     request-scoped client passes through the spaces extension,
+ *     which scopes `delete` to the requester's namespace and 404s on
+ *     any data view that doesn't live in that exact space — even
+ *     with `force: true`, because the spaces extension's existence
+ *     check runs before delegating the delete to the underlying
+ *     repository.
+ *   - `index-pattern` is a multi-namespace SO type
+ *     (`namespaceType: 'multiple'`). Each delete is issued against
+ *     the SO's own namespace, not the internal client's implicit
+ *     default. The SO repository's `delete` preflight
+ *     (`preflightCheckNamespaces`) returns `found_outside_namespace`
+ *     and surfaces as a 404 if the SO's `namespaces` array doesn't
+ *     include the namespace passed in — and the internal client's
+ *     implicit default is `'default'`, so any data view that lives in
+ *     a non-default space would never be deletable without an
+ *     explicit namespace. `force: true` only widens the multi-share
+ *     case; it does not bypass the namespace preflight.
+ *   - 404 on delete is treated as success. An unscoped client should
+ *     not normally 404 on an id just enumerated with its
+ *     namespace, but a concurrent `/reset` (or an out-of-band SO
+ *     deletion via Stack Management) between pass 1 and pass 2 can
+ *     race the delete. The desired end state is "data view gone",
+ *     which the 404 path already satisfies.
  */
 export async function deleteAllPerSpaceCasesDataViews(
   soClient: SavedObjectsClientContract,
@@ -573,8 +552,8 @@ export async function deleteAllPerSpaceCasesDataViews(
 ): Promise<number> {
   const PAGE_SIZE = 100;
 
-  // Pass 1: collect matching ids. Pagination is stable because we don't
-  // mutate the index while walking it.
+  // Pass 1: collect matching ids. Pagination is stable because the
+  // index isn't mutated while it's being walked.
   const targets: Array<{ id: string; namespace: string | undefined }> = [];
   let page = 1;
   while (true) {
@@ -586,7 +565,8 @@ export async function deleteAllPerSpaceCasesDataViews(
     });
 
     for (const so of result.saved_objects) {
-      // Only act on data views we manage; everything else is left untouched.
+      // Only act on data views managed by this plugin; everything
+      // else is left untouched.
       if (so.id.startsWith(CASE_DATA_VIEW_ID_PREFIX)) {
         targets.push({ id: so.id, namespace: so.namespaces?.[0] });
       }
@@ -596,42 +576,44 @@ export async function deleteAllPerSpaceCasesDataViews(
     page++;
   }
 
-  // Pass 2: delete the collected ids. Per-item errors log at WARN and the
-  // walk continues — one stuck data view shouldn't block the rest of the
-  // cleanup. A 404 is a benign race outcome (concurrent `/reset` or an
-  // out-of-band Stack Management deletion between pass 1 and pass 2) so we
-  // log it at DEBUG and exclude it from the deletion count (the
-  // disappearing-id wasn't deleted by *us*, but the desired end state is
-  // satisfied).
+  // Pass 2: delete the collected ids. Per-item errors log at WARN
+  // and the walk continues — one stuck data view shouldn't block the
+  // rest of the cleanup. A 404 is a benign race outcome (concurrent
+  // `/reset`, or an out-of-band Stack Management deletion between
+  // pass 1 and pass 2) so it logs at DEBUG and is excluded from the
+  // deletion count.
   let deleted = 0;
   for (const target of targets) {
     try {
       await soClient.delete(DATA_VIEW_SO_TYPE, target.id, {
-        // Tells the SO repository which namespace to run its existence
-        // preflight against — see the "each delete is issued against the
-        // SO's own namespace" note above. Falls back to `undefined`
-        // (= default) for the edge case where a managed data view SO
-        // somehow lacks a `namespaces` array; in that situation the
-        // existing 404-as-success branch below covers the wrong-default
-        // mismatch.
+        // Tells the SO repository which namespace to run its
+        // existence preflight against (see the per-namespace delete
+        // note above). Falls back to `undefined` (= default) for the
+        // edge case where a managed data view SO lacks a
+        // `namespaces` array; the 404-as-success branch below
+        // covers the wrong-default mismatch.
         namespace: target.namespace,
         force: true,
       });
       deleted++;
     } catch (err) {
       if (isSavedObjectNotFoundError(err)) {
+        // 404 between pass 1 (enumeration) and pass 2 (delete) is a
+        // benign race outcome — concurrent `/reset` or out-of-band
+        // deletion. Excluded from the deletion count and logged at
+        // debug rather than warn.
         logger.debug(
           `reset: data view ${target.id} (space=${
             target.namespace ?? 'unknown'
-          }) already gone by the time we issued delete; treating as success`
+          }) already gone by the time delete was issued; treating as success`
         );
-        continue;
+      } else {
+        logger.warn(
+          `reset: failed to delete data view ${target.id} (space=${
+            target.namespace ?? 'unknown'
+          }): ${err instanceof Error ? err.message : String(err)}`
+        );
       }
-      logger.warn(
-        `reset: failed to delete data view ${target.id} (space=${target.namespace ?? 'unknown'}): ${
-          err instanceof Error ? err.message : String(err)
-        }`
-      );
     }
   }
 
@@ -640,12 +622,12 @@ export async function deleteAllPerSpaceCasesDataViews(
 
 /**
  * Detects the saved-objects "not found" surface. The SO API throws
- * `SavedObjectsErrorHelpers.createGenericNotFoundError` (404), but at the
- * SO client boundary the error can land as either a `Boom`-style object
- * with `output.statusCode === 404` or a plain `Error` whose message
- * matches `Saved object [<type>/<id>] not found`. We check all three so
- * test fixtures (which often skip the Boom shape) still take the benign
- * path.
+ * `SavedObjectsErrorHelpers.createGenericNotFoundError` (404), but at
+ * the SO client boundary the error can land as either a `Boom`-style
+ * object with `output.statusCode === 404` or a plain `Error` whose
+ * message matches `Saved object [<type>/<id>] not found`. All three
+ * shapes are checked so test fixtures (which often skip the Boom
+ * shape) still take the benign path.
  */
 function isSavedObjectNotFoundError(err: unknown): boolean {
   if (err == null) return false;

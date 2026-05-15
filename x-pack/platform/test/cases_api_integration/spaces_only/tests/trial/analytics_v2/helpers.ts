@@ -40,7 +40,7 @@ export async function waitForIndexExists(
   throw new Error(`Timed out waiting for ${index} to exist`);
 }
 
-/** Convenience wrapper preserved for the existing cases-surface tests. */
+/** Convenience wrapper for the cases-surface tests. */
 export const waitForCaseIndexExists = (es: Client, timeoutMs?: number): Promise<void> =>
   waitForIndexExists(es, CASE_INDEX, timeoutMs);
 
@@ -49,10 +49,10 @@ export const waitForActivityIndexExists = (es: Client, timeoutMs?: number): Prom
   waitForIndexExists(es, ACTIVITY_INDEX, timeoutMs);
 
 /**
- * Poll `.cases` until the analytics doc for the given caseId reaches the
- * expected presence. The v2 writer is fire-and-forget on a separate code path
- * from the SO write — `?refresh=true` on the cases API doesn't refresh
- * `.cases`, so tests must poll-with-refresh.
+ * Poll `.cases` until the analytics doc for the given caseId reaches
+ * the expected presence. The v2 writer is fire-and-forget on a
+ * separate code path from the SO write — `?refresh=true` on the
+ * cases API doesn't refresh `.cases`, so tests must poll-with-refresh.
  */
 export async function waitForAnalyticsCase(
   es: Client,
@@ -65,8 +65,8 @@ export async function waitForAnalyticsCase(
     try {
       await es.indices.refresh({ index: CASE_INDEX });
     } catch {
-      // Index may have been dropped mid-test — keep polling, the next
-      // `get` will throw 404 and we'll handle it.
+      // Index may have been dropped mid-test — keep polling; the next
+      // `get` will throw 404 and the catch below handles it.
     }
     try {
       await es.get({ index: CASE_INDEX, id: caseId });
@@ -118,20 +118,21 @@ export async function getAnalyticsCase(es: Client, caseId: string): Promise<Anal
 }
 
 /**
- * `/reset` now returns 202 — the destructive cleanup (drop + recreate
+ * `/reset` returns 202 — the destructive cleanup (drop + recreate
  * indices, delete data views, clear cache) is synchronous, but the
  * full backfill walk runs asynchronously in a one-shot Task Manager
  * job (`cases.analyticsV2.fullReset`). This helper:
- *   1. Posts to /reset and asserts the 202 + `reset_task.id` envelope.
+ *   1. Posts to `/reset` and asserts the 202 + `reset_task.id`
+ *      envelope.
  *   2. Polls `/state.active_reset` until the task SO disappears
- *      (success → Task Manager auto-removes the SO) or transitions
- *      to `'failed'`.
- * Returns the final reset task snapshot (or null on success).
+ *      (Task Manager auto-removes one-shot tasks on success) or
+ *      transitions to `'failed'`.
+ * Returns the final reset task snapshot (`null` on success).
  *
  * Tests that need to assert specific docs are present after reset
  * still call `waitForAnalyticsCase` / `waitForActivityForCase` — this
- * helper just ensures the backfill walk has actually completed before
- * the test moves on.
+ * helper just ensures the backfill walk has completed before the
+ * test moves on.
  */
 export async function resetV2(
   supertest: SuperTest.Agent,
@@ -142,9 +143,9 @@ export async function resetV2(
     .set(INTERNAL_HEADERS)
     .expect(202);
 
-  // Sanity-check the new response envelope so a regression that
-  // returns 200 (synchronous walk) or omits the task-id payload
-  // flips this red instead of silently passing.
+  // Sanity-check the response envelope so a regression that returns
+  // 200 (synchronous walk) or omits the task-id payload fails here
+  // instead of passing silently.
   if (response.body?.reset_task?.id == null) {
     throw new Error(
       `/reset returned 202 but the body is missing reset_task.id. body=${JSON.stringify(
@@ -158,13 +159,13 @@ export async function resetV2(
 
 /**
  * Polls `/state` until the in-flight reset task either disappears
- * (success — Task Manager auto-removes one-shot tasks on successful
- * return) or transitions to `'failed'`. Returns whatever the final
- * snapshot is (null on success, the failed task on failure).
+ * (Task Manager auto-removes one-shot tasks on successful return)
+ * or transitions to `'failed'`. Returns the final snapshot (`null`
+ * on success, the failed task on failure).
  *
- * Separate from `resetV2` so tests that schedule a reset via a custom
- * handler call (e.g. asserting the 202 response shape directly) can
- * still wait for completion afterward.
+ * Separate from `resetV2` so tests that schedule a reset via a
+ * custom handler call (e.g. asserting the 202 response shape
+ * directly) can still wait for completion afterward.
  */
 export async function waitForResetComplete(
   supertest: SuperTest.Agent,
@@ -198,14 +199,14 @@ export async function runReconcileSoon(supertest: SuperTest.Agent): Promise<void
 }
 
 /**
- * Poll `.cases-activity` until the count of docs matching `cases.id =
- * caseId` reaches at least `minCount`. The activity writer is fire-
- * and-forget on a separate code path from the user-actions SO write —
- * `?refresh=true` on the cases API doesn't refresh `.cases-activity`,
- * so tests must poll-with-refresh.
+ * Poll `.cases-activity` until the count of docs matching
+ * `cases.id = caseId` reaches at least `minCount`. The activity
+ * writer is fire-and-forget on a separate code path from the
+ * user-actions SO write — `?refresh=true` on the cases API doesn't
+ * refresh `.cases-activity`, so tests must poll-with-refresh.
  *
- * Returns the matching activity docs (sorted by `@timestamp` ASC) once
- * the threshold is met; throws on timeout.
+ * Returns the matching activity docs (sorted by `@timestamp` ASC)
+ * once the threshold is met; throws on timeout.
  */
 export async function waitForActivityForCase(
   es: Client,
@@ -218,8 +219,8 @@ export async function waitForActivityForCase(
     try {
       await es.indices.refresh({ index: ACTIVITY_INDEX });
     } catch {
-      // Index may have been dropped mid-test — poll again, the search
-      // will throw and we'll retry.
+      // Index may have been dropped mid-test — poll again; the search
+      // throws and the loop retries.
     }
     try {
       const search = await es.search<ActivityDocSource>({
@@ -259,8 +260,9 @@ export async function waitForActivityAbsent(
       });
       if ((count.count ?? 0) === 0) return;
     } catch {
-      // Treat missing index / search errors as "no docs" — keep polling
-      // briefly in case the index is being recreated by /reset.
+      // Treat missing index / search errors as "no docs" — keep
+      // polling briefly in case the index is being recreated by
+      // `/reset`.
     }
     await sleep(POLL_INTERVAL_MS);
   }
@@ -271,7 +273,7 @@ export async function waitForActivityAbsent(
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-// ----- Response shape types (subset of what we assert against) -----
+// ----- Response shape types (subset asserted against in tests) -----
 
 export interface AnalyticsCaseSource {
   '@timestamp': string;
@@ -292,7 +294,7 @@ export interface AnalyticsCaseSource {
 
 export interface V2StateBody {
   enabled: boolean;
-  /** Top-level cases-surface fields, retained for backwards compatibility. */
+  /** Aliases for the cases-surface fields under `surfaces.cases`. */
   index: string;
   index_exists: boolean;
   surfaces: {
@@ -304,7 +306,11 @@ export interface V2StateBody {
     last_run: {
       cases_last_run_at?: string;
       activity_last_run_at?: string;
-      /** Legacy single-cursor field, surfaced for upgraded tasks. */
+      /**
+       * Single-cursor compatibility field used as a one-time seed
+       * for `cases_last_run_at` when the per-surface field isn't
+       * yet present in persisted state.
+       */
       last_run_at?: string;
       runs?: number;
       next_run_at?: string;
@@ -312,11 +318,11 @@ export interface V2StateBody {
     } | null;
   };
   /**
-   * Live or most-recently-failed reset task. `null` when no reset is
-   * scheduled OR when the most recent reset succeeded (Task Manager
-   * auto-removes one-shot tasks on success). A non-null snapshot
-   * with `status: 'failed'` is the operator's signal that the
-   * backfill walk threw on both surfaces.
+   * Live or most-recently-failed reset task. `null` when no reset
+   * is scheduled, or when the most recent reset succeeded (Task
+   * Manager auto-removes one-shot tasks on success). A non-null
+   * snapshot with `status: 'failed'` is the administrator's signal that
+   * the backfill walk threw on both surfaces.
    */
   active_reset: {
     task_id: string;
@@ -326,11 +332,11 @@ export interface V2StateBody {
     /**
      * Mirrors `ResetTaskState` in `reset_task.ts`. Updated live by
      * the reset task's wall-clock-throttled progress writer (every
-     * ~30s during the walk) — `phase`, `cases_processed`,
-     * `activity_processed`, `started_at` populate progressively.
-     * `cases_cursor`, `activity_cursor`, `completed_at`,
-     * `cases_error`, `activity_error` only land in the final write
-     * at task completion.
+     * ~30s during the walk): `phase`, `cases_processed`,
+     * `activity_processed`, and `started_at` populate
+     * progressively. `cases_cursor`, `activity_cursor`,
+     * `completed_at`, `cases_error`, and `activity_error` only land
+     * in the final write at task completion.
      */
     state: ActiveResetState;
   } | null;

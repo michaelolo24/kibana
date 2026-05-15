@@ -27,7 +27,7 @@ import type {
   CaseAssignees,
   CaseCustomFields,
 } from '../../../common/types/domain';
-import type { CasesActivityV2WriterContract } from '../../cases_analytics_v2/writer/activity';
+import type { CasesActivityV2WriterContract } from '../../cases_analytics_v2';
 import type { PersistableStateAttachmentTypeRegistry } from '../../attachment_framework/persistable_state_registry';
 import type {
   UserActionPersistedAttributes,

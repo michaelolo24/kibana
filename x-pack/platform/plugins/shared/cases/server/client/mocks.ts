@@ -61,9 +61,11 @@ import {
   createFieldDefinitionsServiceMock,
 } from '../services/mocks';
 import { ConfigSchema } from '../config';
-import { V2_NOOP_WRITER } from '../cases_analytics_v2/writer';
-import { V2_NOOP_ACTIVITY_WRITER } from '../cases_analytics_v2/writer/activity';
-import { V2_NOOP_DATA_VIEW_REFRESHER } from '../cases_analytics_v2';
+import {
+  V2_NOOP_ACTIVITY_WRITER,
+  V2_NOOP_DATA_VIEW_REFRESHER,
+  V2_NOOP_WRITER,
+} from '../cases_analytics_v2';
 import { CasesEventBus } from '../events/event_bus';
 
 const createCasesEventBusMock = (): CasesEventBus => {

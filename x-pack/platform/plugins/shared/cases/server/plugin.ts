@@ -61,9 +61,12 @@ import type { ServerlessProjectType } from '../common/constants/types';
 import { IncrementalIdTaskManager } from './tasks/incremental_id/incremental_id_task_manager';
 import { createCasesAnalyticsIndexes, registerCasesAnalyticsIndexesTasks } from './cases_analytics';
 import { scheduleCAISchedulerTask } from './cases_analytics/tasks/scheduler_task';
-import { CasesAnalyticsV2Service, V2_NOOP_DATA_VIEW_REFRESHER } from './cases_analytics_v2';
-import { V2_NOOP_WRITER } from './cases_analytics_v2/writer';
-import { V2_NOOP_ACTIVITY_WRITER } from './cases_analytics_v2/writer/activity';
+import {
+  CasesAnalyticsV2Service,
+  V2_NOOP_ACTIVITY_WRITER,
+  V2_NOOP_DATA_VIEW_REFRESHER,
+  V2_NOOP_WRITER,
+} from './cases_analytics_v2';
 import { CasesEventBus } from './events/event_bus';
 import { registerCaseWorkflowSteps } from './workflows';
 import { registerCaseWorkflowTriggers } from './workflows/triggers';
@@ -139,7 +142,7 @@ export class CasePlugin
       logger: this.logger,
       enabled: this.caseConfig.analyticsV2.enabled,
       reconciliationIntervalMinutes: this.caseConfig.analyticsV2.reconciliationIntervalMinutes,
-      // `xpack.cases.analyticsV2.enable_debug_mode` gates the v2 admin
+      // `xpack.cases.analyticsV2.enable_admin_routes` gates the v2 admin
       // routes that mutate subsystem state (`/reset`,
       // `/reconcile/run_soon`). Lives under `analyticsV2` (not the
       // legacy `analytics` namespace, which is the v1-only surface and
@@ -147,7 +150,7 @@ export class CasePlugin
       // if both are ever sunset together. Default false; operators set
       // this to true in `kibana.yml` when they need the debug surface
       // (mapping migrations, sustained writer failures, dev iteration).
-      enableDebugMode: this.caseConfig.analyticsV2.enable_debug_mode,
+      enableAdminRoutes: this.caseConfig.analyticsV2.enable_admin_routes,
       // Reset-task tunables. Threaded through to the
       // `cases.analyticsV2.fullReset` task type's `timeout` and to the
       // reconciliation runners' inter-page sleep when invoked from the

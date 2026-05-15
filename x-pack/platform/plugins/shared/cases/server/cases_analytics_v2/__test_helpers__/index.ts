@@ -6,13 +6,12 @@
  */
 
 /**
- * Shared test fixtures for the `cases_analytics_v2` Jest suites. Lives
- * under `__test_helpers__/` (Jest's default `roots` ignore folder) so it
- * never compiles into production bundles.
+ * Shared test fixtures for the `cases_analytics_v2` Jest suites.
+ * Lives under `__test_helpers__/` (Jest's default `roots` ignore
+ * folder) so it never compiles into production bundles.
  *
- * Anything in here is intended to be used by more than one test file. Per-
- * file fixtures stay local to their `*.test.ts` to keep the surface area
- * small and the failure modes easy to trace.
+ * Add a fixture here only when it's used by more than one test file;
+ * per-file fixtures stay local to their `*.test.ts`.
  */
 
 import type {
@@ -34,8 +33,8 @@ import type { CasesAnalyticsV2WriterContract } from '../writer';
 // ----- Saved-object factories -----
 
 /**
- * Build a `cases` SO with safe defaults. Override timestamps per-test
- * when the test cares about created/updated boundaries (reconciliation),
+ * Build a `cases` SO with safe defaults. Override timestamps when
+ * the test cares about created/updated boundaries (reconciliation);
  * leave them alone otherwise (writer).
  */
 export const makeCase = (
@@ -75,9 +74,9 @@ export const makeCase = (
   } as SavedObject<CasePersistedAttributes>);
 
 /**
- * Build a `cases-templates` SO with the persisted shape the analytics-v2
- * data view service reads — only `attributes.fieldNames` matters, so the
- * factory leaves everything else minimal.
+ * Build a `cases-templates` SO with the persisted shape the
+ * analytics-v2 data view service reads. Only `attributes.fieldNames`
+ * is consumed, so the factory leaves everything else minimal.
  */
 export interface TemplateLike {
   fieldNames?: Array<{ name: string; label?: string; type: string; control?: string }>;
@@ -98,12 +97,13 @@ export const makeTemplate = (
 // ----- SO client `find` stub -----
 
 /**
- * Stub the SO client's `find` to return one populated page, then empty
- * pages thereafter. Mirrors how the production callers (`runner.ts`,
- * `data_view/service.ts`) page until they see a short response.
+ * Stub the SO client's `find` to return one populated page, then
+ * empty pages thereafter. Mirrors how the production callers
+ * (`runner.ts`, `data_view/service.ts`) page until they see a short
+ * response.
  *
- * Generic over the SO attributes shape — the same stub works for cases,
- * templates, or any other SO type the suite cares about.
+ * Generic over the SO attributes shape so the same stub works for
+ * cases, templates, or any other SO type a suite consumes.
  */
 export const stubFindOnePage = <T>(
   client: ReturnType<typeof savedObjectsClientMock.create>,
@@ -115,12 +115,12 @@ export const stubFindOnePage = <T>(
 
 /**
  * Stub the SO client's `find` to return a sequence of single-page
- * responses — one page per outer-call to `client.find`. Once the
+ * responses — one page per outer call to `client.find`. Once the
  * sequence is exhausted, every subsequent call returns an empty page.
  *
  * Use this when a test issues multiple `collectSnakeKeysForSpace` /
  * `runReconciliation` cycles and needs each cycle to see a different
- * template / case set (e.g. fingerprint cache-hit vs. miss).
+ * template or case set (e.g. fingerprint cache-hit vs miss).
  */
 export const stubFindWithPages = <T>(
   client: ReturnType<typeof savedObjectsClientMock.create>,
@@ -143,11 +143,11 @@ export const stubFindWithPages = <T>(
 // ----- Writer mocks -----
 
 /**
- * Mock implementation of the writer contract for tests that don't care
- * how data lands in the analytics index, only that the right calls are
- * made (reconciliation runner, anything orchestrating bulk dispatches).
+ * Mock implementation of the writer contract for tests that only
+ * need to assert the right calls are made (reconciliation runner,
+ * anything orchestrating bulk dispatches).
  *
- * Tests that need to exercise the real writer's retry / failure logic
+ * Tests that exercise the real writer's retry / failure logic
  * construct it directly — see `writer/writer.test.ts`.
  */
 export const makeWriterMock = (): jest.Mocked<CasesAnalyticsV2WriterContract> => ({
@@ -173,9 +173,10 @@ export const makeMockDvService = (): MockDvService => ({
 });
 
 /**
- * Wrap a mock data views service into the plugin-start contract shape
- * the analytics-v2 service consumes. Cast to `DataViewsServerPluginStart`
- * is the cheap path — every test pulls only `dataViewsServiceFactory`.
+ * Wrap a mock data views service into the plugin-start contract
+ * shape the analytics-v2 service consumes. The cast to
+ * `DataViewsServerPluginStart` is safe because every test only
+ * pulls `dataViewsServiceFactory`.
  */
 export const makeDataViewsPluginStart = (dvService: MockDvService): DataViewsServerPluginStart =>
   ({
@@ -185,10 +186,10 @@ export const makeDataViewsPluginStart = (dvService: MockDvService): DataViewsSer
 /**
  * Mock data view that round-trips its runtime field map through
  * `toSpec()` and `replaceAllRuntimeFields()` — the two surfaces the
- * production diff branch in `ensureOrRefreshForSpace` actually touches.
+ * diff branch in `ensureOrRefreshForSpace` touches.
  *
- * `__runtimeFieldMap` is the private mutable backing store; tests can
- * read or overwrite it directly to seed equality / drift fixtures.
+ * `__runtimeFieldMap` is the mutable backing store; tests can read
+ * or overwrite it directly to seed equality / drift fixtures.
  */
 export interface MockDataView {
   id: string;
@@ -207,8 +208,9 @@ export const makeDataViewWithRuntime = (
     toSpec: jest.fn(),
     replaceAllRuntimeFields: jest.fn(),
   };
-  // `toSpec` returns a fresh shallow copy so the diff in the service uses
-  // the recorded state, not whatever happens after `replaceAllRuntimeFields`.
+  // `toSpec` returns a fresh shallow copy so the diff in the service
+  // uses the recorded state, not whatever happens after a later
+  // `replaceAllRuntimeFields` call.
   dv.toSpec.mockImplementation(
     () =>
       ({
@@ -217,8 +219,8 @@ export const makeDataViewWithRuntime = (
         runtimeFieldMap: { ...dv.__runtimeFieldMap },
       } as DataViewSpec)
   );
-  // Mirror the real method's behaviour for any test that later calls
-  // `toSpec` and expects to see the new map.
+  // Mirror the real method's behavior so any test that later calls
+  // `toSpec` sees the updated map.
   dv.replaceAllRuntimeFields.mockImplementation((newMap) => {
     dv.__runtimeFieldMap = newMap as Record<string, RuntimeFieldSpec>;
   });

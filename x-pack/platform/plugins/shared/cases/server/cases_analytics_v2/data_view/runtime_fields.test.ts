@@ -43,18 +43,14 @@ describe('splitSnakeKey', () => {
   });
 
   /**
-   * FAILURE SCENARIO: Unsafe template name reaches the Painless interpolator
-   * Symptom: A template field whose name contains a single quote, backslash,
-   *          newline, or other shell-special character would otherwise be
-   *          concatenated verbatim into a Painless string literal, breaking
-   *          the script (Lens / Discover would render the field as broken)
-   *          or — worst case — opening a Painless-injection path.
-   * Log signature: none — defensive drop is silent (the field is simply
-   *          not surfaced as a runtime field).
-   * Trigger: Template upstream layer accepts arbitrary `name: z.string()`;
-   *          analytics layer cannot trust the upstream charset.
-   * Recovery: Self-healing — once the template is fixed to use a safe name,
-   *          the next refresh publishes the runtime field normally.
+   * Templates accept arbitrary `name: z.string()` upstream, so the
+   * analytics layer cannot trust the charset. A template field whose
+   * name contains a single quote, backslash, or newline would
+   * otherwise be concatenated verbatim into a Painless string
+   * literal, breaking the script or — worst case — opening a
+   * Painless-injection path. The defensive drop silently skips such
+   * fields; once the template is fixed, the next refresh publishes
+   * the runtime field normally.
    */
   it('rejects snake-keys containing characters outside [A-Za-z0-9_]', () => {
     expect(splitSnakeKey('evil\'); script("x"_as_long')).toBeNull();

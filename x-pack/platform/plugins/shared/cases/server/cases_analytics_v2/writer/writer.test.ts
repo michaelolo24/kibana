@@ -138,11 +138,10 @@ describe('CasesAnalyticsV2Writer', () => {
     });
 
     /**
-     * FAILURE SCENARIO: Bulk-level transport failure during reconciliation
-     * Symptom: Reconciliation tick fails; analytics frozen for that tick
-     * Log signature: `cases.analyticsV2 bulk-awaited write failed after N retries`
-     * Trigger: ES unreachable / 5xx on the entire bulk request
-     * Recovery: Self-heals on the next reconciliation tick; cursor pinned
+     * On a bulk-level transport failure (ES unreachable / 5xx on the
+     * whole bulk), the awaited bulk must throw instead of resolving
+     * so the reconciliation tick fails and the cursor stays pinned.
+     * Self-heals on the next reconciliation tick.
      */
     it('throws (does not resolve) when the bulk request fails its retry budget — keeps cursor pinned', async () => {
       const { writer, esClient, logger } = buildWriterUnderTest();
@@ -160,15 +159,11 @@ describe('CasesAnalyticsV2Writer', () => {
     });
 
     /**
-     * FAILURE SCENARIO: Transient per-item failure (e.g. ES queue full → 429)
-     *                   during reconciliation
-     * Symptom: Tick fails so the cursor stays pinned and the failed cases
-     *          get re-walked on the next tick (whose `updated_at` filter
-     *          would otherwise miss them — `updated_at` doesn't move on
-     *          a failed write).
-     * Log signature: `bulk-upsert item failed [id=case-A, status=429, retryable=true]`
-     * Trigger: 429 / 503 / 504 on a single bulk item
-     * Recovery: Self-heals on the next tick once ES queue clears
+     * On a transient per-item failure (429 / 503 / 504), the awaited
+     * bulk throws so the cursor stays pinned and the failed cases
+     * get re-walked on the next tick. The next tick's `updated_at`
+     * filter would otherwise miss them — `updated_at` doesn't move
+     * on a failed write.
      */
     it('throws when at least one item failed with a retryable status', async () => {
       const { writer, esClient } = buildWriterUnderTest();
@@ -183,16 +178,12 @@ describe('CasesAnalyticsV2Writer', () => {
     });
 
     /**
-     * FAILURE SCENARIO: Permanent per-item failure (mapper exception on a
-     *                   single bad doc) during reconciliation
-     * Symptom: WARN log surfaces the bad document; the rest of the page
-     *          completes; reconciliation continues — the alternative
-     *          (throwing) would freeze every subsequent tick on the
-     *          same poison doc.
-     * Log signature: `bulk-upsert item failed [id=..., status=400, retryable=false]`
-     * Trigger: malformed `extended_fields` payload, schema drift
-     * Recovery: requires investigating + fixing the source SO; reconciliation
-     *           cannot self-heal a permanent indexing error.
+     * On a permanent per-item failure (e.g. a mapper exception on a
+     * single bad doc), the bad item logs at WARN and the rest of the
+     * page completes; reconciliation continues. Throwing here would
+     * freeze every subsequent tick on the same poison doc.
+     * Recovery requires fixing the source SO — reconciliation cannot
+     * self-heal a permanent indexing error.
      */
     it('does not throw when the only item failures are permanent (e.g. 400 mapper exception)', async () => {
       const { writer, esClient, logger } = buildWriterUnderTest();
@@ -227,12 +218,11 @@ describe('CasesAnalyticsV2Writer', () => {
 
   describe('fireAndForget logging', () => {
     /**
-     * FAILURE SCENARIO: Single-case write retries exhaust on a transient blip
-     * Symptom: One case temporarily missing from analytics; reconciliation
-     *          repairs it on the next tick.
-     * Log signature: `cases.analyticsV2 write failed after N retries [case[id=...]]`
-     * Trigger: Transient ES 5xx during the per-case `index` call
-     * Recovery: Self-heals via reconciliation (next tick re-walks).
+     * When a single-case write exhausts its retry budget on a
+     * transient ES 5xx, the case is temporarily missing from
+     * analytics; reconciliation repairs it on the next tick. The
+     * post-retry log uses WARN so transient blips don't generate
+     * ERROR alert spam.
      */
     it('downgrades post-retry-budget failures to WARN (not ERROR)', async () => {
       const { writer, esClient, logger } = buildWriterUnderTest();
@@ -242,7 +232,6 @@ describe('CasesAnalyticsV2Writer', () => {
       await new Promise((r) => setTimeout(r, 100));
 
       const childLogger = (logger.get as jest.Mock).mock.results[0]?.value ?? logger;
-      // ERROR would re-introduce alert spam during bulk-op blips.
       expect(childLogger.error).not.toHaveBeenCalled();
       expect(childLogger.warn).toHaveBeenCalledWith(
         expect.stringContaining('write failed after'),

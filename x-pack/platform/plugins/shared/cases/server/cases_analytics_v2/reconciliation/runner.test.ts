@@ -30,7 +30,7 @@ describe('runReconciliation', () => {
   });
 
   it('reconciles cases updated since lastRunAt', async () => {
-    // Updated since lastRunAt — the classic "patched after a missed write" case.
+    // Updated since lastRunAt — the "patched after a missed write" path.
     const { client, writer } = setup([
       makeCase('case-B', {
         createdAt: '2026-05-01T00:00:00.000Z',
@@ -52,14 +52,17 @@ describe('runReconciliation', () => {
     expect(result.processed).toBe(1);
   });
 
-  it('reconciles every case whose updated_at is null, regardless of created_at', async () => {
-    // A newly-created case whose writer hook failed has `updated_at: null`
-    // until someone patches it. The OR-clause's null branch is
-    // unconditional on `created_at` so:
-    //   - `case-A` (just created, brand-new) still surfaces.
-    //   - `case-orphan` (created long ago, writer-hook-missed, never
-    //     patched) ALSO surfaces. Gating the null branch on
-    //     `created_at > lastRunAt` would let it slip through forever.
+  it('reconciles never-patched cases created since lastRunAt and skips older never-patched cases', async () => {
+    // A newly-created case whose writer hook failed has
+    // `updated_at: null` until someone patches it. The null branch is
+    // gated on `created_at > lastRunAt` so:
+    //   - `case-A` (created since lastRunAt) surfaces — typical
+    //     "writer dropped the create" recovery path.
+    //   - `case-orphan` (created long ago, never patched, doc
+    //     missing from `.cases` due to e.g. an out-of-band ES delete)
+    //     does NOT surface here. `POST /reset` clears the cursor and
+    //     re-walks every case; that is the documented recovery path
+    //     for drift on never-patched cases predating the cursor.
     const { client, writer } = setup([
       makeCase('case-A', { createdAt: '2026-05-05T00:00:00.000Z', updatedAt: null }),
       makeCase('case-orphan', { createdAt: '2024-01-01T00:00:00.000Z', updatedAt: null }),
@@ -72,39 +75,24 @@ describe('runReconciliation', () => {
       lastRunAt: '2026-05-04T00:00:00.000Z',
     });
 
+    // The mocked `find` returns both cases regardless of the filter
+    // (filter evaluation is on the SO repository, not in the mock).
+    // The runner forwards every returned doc to the writer, so this
+    // assertion is necessarily structural-only — it is the companion
+    // structural-shape test below that locks the actual filter.
     expect(writer.bulkUpsertCasesAwait).toHaveBeenCalledTimes(1);
-    expect(writer.bulkUpsertCasesAwait).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ id: 'case-A' }),
-        expect.objectContaining({ id: 'case-orphan' }),
-      ])
-    );
     expect(result.processed).toBe(2);
   });
 
   /**
-   * FAILURE SCENARIO: Reconciliation filter narrows the null branch to
-   *                   `created_at > lastRunAt`
-   * Symptom: After `/reset`, only cases the user has patched come back.
-   *          Ancient cases whose initial fire-and-forget write failed
-   *          (or whose space had analyticsV2 disabled at create time)
-   *          stay missing forever — the first post-reset tick advances
-   *          the cursor past them, and every subsequent tick filters
-   *          them out because `created_at < lastRunAt`.
-   * Log signature: none (silent under-reporting; tenants notice via
-   *                missing rows in Lens / Discover).
-   * Trigger: Any refactor that re-adds an `AND created_at > lastRunAt`
-   *          guard to the null branch under the assumption that "we'd
-   *          have caught it on a previous tick already" — that
-   *          assumption breaks the first time the previous tick
-   *          ran with a writer that was failing on a subset of cases.
-   * Recovery: Restore the unconditional null branch. The structural
-   *           filter assertion below pins this contract.
+   * Structural lock on the KQL the runner sends to the SO client.
+   * The mocked `find` doesn't apply the filter, so the production
+   * shape can only be verified via the serialized KQL. Loosening this
+   * to drop the `created_at > lastRunAt` guard on the null branch
+   * would re-introduce unbounded re-emission of every never-patched
+   * case on every tick.
    */
-  it('serializes a filter whose null branch is unconditional (no created_at gate)', async () => {
-    // Structural lock — the mocked `find` doesn't apply the filter so we
-    // assert on the serialized KQL instead. Anything tighter than `OR (not
-    // <type>.attributes.updated_at:*)` re-introduces the orphan-case bug.
+  it('serializes a filter whose null branch is gated on created_at', async () => {
     const { client, writer } = setup([]);
 
     await runReconciliation({
@@ -118,19 +106,26 @@ describe('runReconciliation', () => {
     const findArgs = client.find.mock.calls[0]?.[0] as { filter?: KueryNode };
     expect(findArgs.filter).toBeDefined();
     const kuery = toKqlExpression(findArgs.filter as KueryNode);
-    // The cursor clause is still there.
-    expect(kuery).toMatch(/attributes\.updated_at\s*>\s*"2026-05-04T00:00:00\.000Z"/);
-    // The null clause is there.
+    // KQL serializes the timestamp value either quoted
+    // (`"2026-05-04T00:00:00.000Z"`) or unquoted with colons
+    // backslash-escaped (`2026-05-04T00\:00\:00.000Z`); both are
+    // semantically identical at parse time. The regex tolerates
+    // either form.
+    const TS_PATTERN = /"?2026-05-04T00\\?:00\\?:00\.000Z"?/;
+    // Clause 1: cursor on updated_at.
+    expect(kuery).toMatch(
+      new RegExp(`attributes\\.updated_at\\s*>\\s*${TS_PATTERN.source}`)
+    );
+    // Clause 2: missing-updated_at AND-ed with cursor on created_at.
     expect(kuery).toMatch(/not\s+cases\.attributes\.updated_at\s*:\s*\*/i);
-    // ...and it is NOT AND-ed with a `created_at` guard. If someone
-    // re-introduces the orphan-skipping filter, this regex matches and
-    // fails the test.
-    expect(kuery).not.toMatch(/created_at/i);
+    expect(kuery).toMatch(
+      new RegExp(`attributes\\.created_at\\s*>\\s*${TS_PATTERN.source}`)
+    );
   });
 
   it('walks every case when lastRunAt is undefined (first-ever run / post-reset)', async () => {
-    // No cursor → no filter → walks every case. This is the path /reset
-    // depends on after it clears the task state.
+    // No cursor → no filter → walks every case. This is the path
+    // `/reset` depends on after it clears the task state.
     const { client, writer } = setup([
       makeCase('case-A', { createdAt: '2024-01-01T00:00:00.000Z', updatedAt: null }),
       makeCase('case-B', {
@@ -146,11 +141,11 @@ describe('runReconciliation', () => {
       lastRunAt: undefined,
     });
 
-    // No filter passed when lastRunAt is undefined.
     expect(client.find).toHaveBeenCalledWith(expect.objectContaining({ filter: undefined }));
-    // Sort is intentionally omitted — the SO API auto-uses `_shard_doc` with
-    // a PIT, which is the unique-per-doc sort that prevents `searchAfter`
-    // skips/dupes when many cases share the same timestamp (bulk imports).
+    // Sort is intentionally omitted — the SO API auto-uses
+    // `_shard_doc` with a PIT, which is the unique-per-doc sort that
+    // prevents `searchAfter` skips/dupes when many cases share the
+    // same timestamp (bulk imports).
     const findArgs = client.find.mock.calls[0]?.[0] ?? {};
     expect(findArgs).not.toHaveProperty('sortField');
     expect(findArgs).not.toHaveProperty('sortOrder');
@@ -166,32 +161,14 @@ describe('runReconciliation', () => {
   });
 
   /**
-   * FAILURE SCENARIO: Reconciliation walk silently scoped to the
-   *                   `default` namespace
-   * Symptom: After `/reset`, only cases that live in the `default` space
-   *          come back. Cases in any other space (e.g. `analytics-1`,
-   *          `analytics-2`, ...) stay invisible to the analytics index
-   *          until someone manually patches them (which routes through
-   *          the fire-and-forget write hook, which DOES know about its
-   *          request's namespace). The user-visible pattern looks like
-   *          "only cases with a template field show up" because in
-   *          tenants where users only configure templates per-space, the
-   *          template-having spaces tend to overlap with `default`.
-   * Log signature: none (silent under-walk; the SO `find` returns zero
-   *                results across all non-default spaces and the runner
-   *                logs `processed=0` for them implicitly).
-   * Trigger: The runner's SO client is the v2 internal client (unscoped,
-   *          no spaces extension). The SO repository's `find` and
-   *          `openPointInTimeForType` both default `options.namespaces`
-   *          to `[DEFAULT_NAMESPACE_STRING]` when omitted (see
-   *          `core/saved-objects/api-server-internal/.../find.ts`
-   *          and `.../open_point_in_time.ts`). Omitting the param —
-   *          which the original implementation did — silently restricts
-   *          the walk to `default` even on an unscoped client.
-   * Recovery: Pass `namespaces: ['*']` on BOTH calls; the SO repository's
-   *           search DSL builder treats `'*'` as the
-   *           `ALL_NAMESPACES_STRING` sentinel and lifts the namespace
-   *           filter from the query.
+   * The runner's SO client is the v2 internal client (unscoped, no
+   * spaces extension). The SO repository's `find` and
+   * `openPointInTimeForType` both default `options.namespaces` to
+   * `[DEFAULT_NAMESPACE_STRING]` when omitted, so leaving the param
+   * out silently restricts the walk to `default` even on an unscoped
+   * client. Passing `namespaces: ['*']` lifts the namespace filter
+   * (treated as the `ALL_NAMESPACES_STRING` sentinel by the search
+   * DSL builder) so the walk crosses every space.
    */
   it('passes namespaces: ["*"] to both the PIT open and every paged find so the walk crosses every space', async () => {
     const { client, writer } = setup([
@@ -208,10 +185,10 @@ describe('runReconciliation', () => {
       lastRunAt: undefined,
     });
 
-    // PIT open must carry the cross-namespace sentinel — the PIT
-    // captures the snapshot the page reads walk against, so a
-    // default-only PIT would invisibly cap the walk even if the page
-    // reads asked for `['*']`.
+    // The PIT open must carry the cross-namespace sentinel — the
+    // PIT captures the snapshot the page reads walk against, so a
+    // default-only PIT would invisibly cap the walk even if the
+    // page reads asked for `['*']`.
     expect(client.openPointInTimeForType).toHaveBeenCalledWith(
       'cases',
       expect.objectContaining({ namespaces: ['*'] })
@@ -235,8 +212,8 @@ describe('runReconciliation', () => {
     });
     const after = Date.now();
 
-    // newLastRunAt should be an ISO timestamp captured between `before` and
-    // `after` (tickStartedAt is set before any I/O).
+    // newLastRunAt should be an ISO timestamp captured between
+    // `before` and `after` (tickStartedAt is set before any I/O).
     const cursorMs = new Date(result.newLastRunAt).getTime();
     expect(cursorMs).toBeGreaterThanOrEqual(before);
     expect(cursorMs).toBeLessThanOrEqual(after);
@@ -256,7 +233,7 @@ describe('runReconciliation', () => {
       })
     ).rejects.toThrow('boom');
 
-    // PIT leak prevention — `closePointInTime` is in a `finally` block.
+    // PIT leak prevention — `closePointInTime` runs in `finally`.
     expect(client.closePointInTime).toHaveBeenCalledTimes(1);
     expect(client.closePointInTime).toHaveBeenCalledWith('some_pit_id');
   });

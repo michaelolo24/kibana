@@ -21,30 +21,27 @@ import { ACTIVITY_INDEX_MAPPING } from './activity';
  * Schema drift guards for the activity surface — three complementary
  * layers, mirroring the cases-surface guard at `schema_drift.test.ts`.
  *
- * **Layer 1 (buildActivityDoc output ⊆ ACTIVITY_INDEX_MAPPING).** The
- * `.cases-activity` index is mapped `dynamic: 'strict'` — any field a
- * doc-builder emits that isn't in the mapping fails the write with
- * `mapper_parsing_exception`. The writer's `.catch` swallow means that
- * failure is silent: the API succeeds, no doc lands, and the only signal
- * is an ERROR log. This layer round-trips every per-action-type fixture
- * through `buildActivityDoc` and asserts every emitted dotted path
- * resolves in `ACTIVITY_INDEX_MAPPING`.
+ * Layer 1 (buildActivityDoc output ⊆ ACTIVITY_INDEX_MAPPING). The
+ * `.cases-activity` index is mapped `dynamic: 'strict'` — any field
+ * a doc-builder emits that isn't in the mapping fails the write
+ * with `mapper_parsing_exception`. The writer's `.catch` swallow
+ * makes that failure silent (success response, no doc landed, only
+ * an ERROR log). This layer round-trips every per-action-type
+ * fixture through `buildActivityDoc` and asserts every emitted
+ * dotted path resolves in `ACTIVITY_INDEX_MAPPING`.
  *
- * **Layer 2 (per-action-type curated extracts).** Curated extract fields
- * (`action.status_new`, `action.severity_new`, etc.) are populated only
- * for specific action types. A regression where the doc-builder forgets
- * to populate (or types incorrectly) one of these is otherwise invisible
- * — the docs are still well-formed, just missing analytics dimensions.
- * This layer pins the per-type contract so any divergence fails fast.
+ * Layer 2 (per-action-type curated extracts). Curated extract
+ * fields (`action.status_new`, `action.severity_new`, etc.) are
+ * populated only for specific action types. A regression that
+ * silently drops or mistypes one of these is otherwise invisible —
+ * docs still pass strict mapping, they just lose analytics
+ * dimensions. This layer pins the per-type contract.
  *
- * **Layer 3 (SO mapping ⊆ ACTIVITY_INDEX_MAPPING via `cases-user-actions`
- * fields the analytics doc cares about).** Asserts that the small set of
- * SO fields the activity doc consumes (`type`, `action`, `payload`,
- * `created_at`, `created_by`, `owner`) all exist on the SO mapping. The
- * cases SO mapping uses `dynamic: false` for `payload` (per the lesson
- * in §1.4 of the followup PR plan) — we don't expect to mirror payload
- * sub-fields here, but the structural guarantees of the surface fields
- * are still worth pinning.
+ * Layer 3 (SO mapping has every surface field the doc-builder
+ * reads). The user-actions SO is `dynamic: false` on `payload`,
+ * so payload sub-fields aren't mirrored. The surface fields the
+ * builder reads (`type`, `action`, `created_at`, `created_by`,
+ * `owner`) must still exist on the SO mapping.
  */
 
 // ----- Mapping-walking helpers (mirrors cases drift test) -----
@@ -98,15 +95,15 @@ const isCovered = (path: string, mappedPaths: Set<string>): boolean => {
 
 // ----- Per-action-type SO fixtures -----
 //
-// One fixture per `UserActionType`. Each represents the most realistic
-// payload shape that type produces in production — copied from the
+// One fixture per `UserActionType`. Each represents the realistic
+// payload shape that type produces in production — taken from the
 // builders at `services/user_actions/builders/*` and the user-action
-// type definitions at `common/types/domain/user_action/`. Adding a new
-// `UserActionType` without an entry here fails the
+// type definitions at `common/types/domain/user_action/`. Adding a
+// new `UserActionType` without an entry here fails the
 // `every-action-type-has-a-fixture` test below.
 //
-// The fixtures are exhaustive on purpose: the schema drift tests need
-// every payload shape to exercise both the curated-extracts code paths
+// The fixtures are exhaustive: the schema drift tests need every
+// payload shape to exercise both the curated-extracts code paths
 // and the JSON-stringify fallback for unknown payload shapes.
 
 const baseAttrs = {
@@ -247,11 +244,11 @@ describe('activity mapping covers every doc-builder field for every action type'
 
 // ----- Layer 2: per-action-type curated extracts -----
 //
-// Each entry pins the curated-extract field(s) the doc-builder MUST
-// populate for that action type, and the value(s) it must produce given
-// the fixture above. A regression that breaks any extract — silently
-// dropping a field, mistyping a value, populating it for the wrong type
-// — fails the matching assertion here.
+// Each entry pins the curated-extract field(s) the doc-builder must
+// populate for that action type and the value(s) it must produce
+// given the fixture above. A regression that silently drops a
+// field, mistypes a value, or populates it for the wrong type
+// fails the matching assertion below.
 
 describe('per-action-type curated extracts', () => {
   it('status: populates action.status_new with the new status string', () => {
@@ -275,8 +272,8 @@ describe('per-action-type curated extracts', () => {
     expect(doc.action.connector_id_new).toBe('connector-1');
   });
   it('non-extract types do not leak any curated extract field', () => {
-    // Spot-check — `description` carries no curated extract, so every
-    // optional extract field on `action` should be undefined.
+    // Spot-check — `description` carries no curated extract, so
+    // every optional extract field on `action` should be undefined.
     const doc = buildActivityDoc(PER_TYPE_FIXTURES.description);
     expect(doc.action.status_new).toBeUndefined();
     expect(doc.action.severity_new).toBeUndefined();
@@ -288,10 +285,10 @@ describe('per-action-type curated extracts', () => {
 
 // ----- Layer 3: SO mapping ⊆ activity mapping (surface fields only) -----
 //
-// The user-actions SO is `dynamic: false` for `payload`, so we don't
-// expect to mirror payload sub-fields. The SO surface fields that ARE
-// indexed are listed below; each must exist in the SO mapping (so we'd
-// notice if upstream renamed `created_by` to `actor` or similar).
+// The user-actions SO is `dynamic: false` for `payload`, so payload
+// sub-fields aren't mirrored. The indexed SO surface fields are
+// listed below; each must exist on the SO mapping so an upstream
+// rename (e.g. `created_by` → `actor`) is caught.
 
 const SURFACE_FIELDS_THE_DOC_BUILDER_READS = [
   'type',
@@ -323,9 +320,9 @@ describe('exhaustiveness', () => {
     const fixtureKeys = new Set(Object.keys(PER_TYPE_FIXTURES));
     const enumKeys = Object.keys(UserActionTypes);
     const missing = enumKeys.filter((k) => !fixtureKeys.has(k));
-    // If this fails: a new UserActionType landed in
-    // `common/types/domain/user_action/action/v1.ts` without a matching
-    // fixture above. Add one before the doc-builder ships.
+    // A new UserActionType landed in
+    // `common/types/domain/user_action/action/v1.ts` without a
+    // matching fixture above; add one before the doc-builder ships.
     expect(missing).toEqual([]);
   });
 });

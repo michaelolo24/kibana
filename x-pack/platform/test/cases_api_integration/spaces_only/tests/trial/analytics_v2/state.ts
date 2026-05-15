@@ -11,10 +11,10 @@ import { deleteAllCaseItems } from '../../../../common/lib/api';
 import { getV2State, resetV2 } from './helpers';
 
 /**
- * `/state` is the on-call introspection endpoint. The critical signal it
- * surfaces is `index_exists` — if v2's bootstrap silently failed, the route
- * returns `enabled: true, index_exists: false`, which would otherwise
- * require digging into Kibana logs or querying ES directly to spot.
+ * Covers `GET /state`, the on-call introspection endpoint. The key
+ * signal is `index_exists` — if v2's bootstrap silently failed, the
+ * route returns `enabled: true, index_exists: false`, which is
+ * otherwise only visible by grepping Kibana logs.
  */
 export default ({ getService }: FtrProviderContext): void => {
   const supertest = getService('supertest');
@@ -32,14 +32,15 @@ export default ({ getService }: FtrProviderContext): void => {
       expect(state.index).to.eql('.cases');
       expect(state.index_exists).to.eql(true);
       expect(state.reconciliation.task_type).to.eql('cases.analyticsV2.reconciliation');
-      // The reconciliation task may or may not have run yet — accept either.
-      // What matters is that `last_run` is structurally present (or null).
+      // The reconciliation task may or may not have run yet —
+      // accept either. What matters is that `last_run` is
+      // structurally present (or null).
       expect(state.reconciliation).to.have.property('last_run');
     });
 
     it('reports index_exists=false when `.cases` was dropped out-of-band', async () => {
-      // Simulate the silent-bootstrap-failure case: delete the index
-      // directly via ES, then `/state` should reflect that the index is
+      // Simulate the silent-bootstrap-failure case: delete the
+      // index directly via ES; `/state` should report the index as
       // missing even though `enabled` is still true.
       await es.indices.delete({ index: '.cases' });
 
@@ -47,20 +48,19 @@ export default ({ getService }: FtrProviderContext): void => {
       expect(state.enabled).to.eql(true);
       expect(state.index_exists).to.eql(false);
 
-      // Hitting `/reset` recreates the index — afterEach handles cleanup,
-      // but we explicitly reset here so the next assertion sees the
-      // recovered state.
+      // `/reset` recreates the index. afterEach handles cleanup,
+      // but reset here so the next assertion sees the recovered
+      // state.
       await resetV2(supertest);
       const afterReset = await getV2State(supertest);
       expect(afterReset.index_exists).to.eql(true);
     });
 
     it('exposes active_reset on the response shape (null when no reset is in flight)', async () => {
-      // resetV2 in afterEach already drains any in-flight reset, so on
-      // a fresh /state call there should be no active reset task SO.
-      // The field MUST exist (even when null) so consumers can rely on
-      // its presence — adding it as null is the documented "no reset
-      // is happening" signal.
+      // resetV2 in afterEach already drains any in-flight reset, so
+      // a fresh `/state` call should see no active reset task SO.
+      // The field must exist (even when null) so consumers can rely
+      // on its presence as the "no reset is happening" signal.
       const state = await getV2State(supertest);
       expect(state).to.have.property('active_reset');
       expect(state.active_reset).to.eql(null);

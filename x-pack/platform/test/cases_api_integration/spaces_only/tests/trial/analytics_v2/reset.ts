@@ -23,11 +23,11 @@ const INTERNAL_HEADERS = {
 } as const;
 
 /**
- * `/reset` is the operator escape hatch. As of C17, it returns 202 and
- * runs the backfill walk asynchronously in a one-shot Task Manager
- * task. The synchronous portion (drop + recreate indices, delete data
- * views, clear cache) still happens in-handler — only the
- * `O(documents)` walk is moved out. Tests assert both phases.
+ * `/reset` is the administrator escape hatch. It returns 202 and runs the
+ * backfill walk asynchronously in a one-shot Task Manager task. The
+ * synchronous portion (drop + recreate indices, delete data views,
+ * clear cache) happens in-handler; only the `O(documents)` walk is
+ * moved out. Tests assert both phases.
  */
 export default ({ getService }: FtrProviderContext): void => {
   const supertest = getService('supertest');
@@ -42,11 +42,10 @@ export default ({ getService }: FtrProviderContext): void => {
     });
 
     it('drops `.cases` and recreates it, returns 202 with a reset_task envelope', async () => {
-      // Pre-state: index has a doc.
       const created = await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, auth);
       await waitForAnalyticsCase(es, created.id);
 
-      // Reset — 202, NOT 200. The destructive cleanup is synchronous,
+      // Reset — 202, not 200. Destructive cleanup is synchronous;
       // the backfill walk is scheduled.
       const response = await supertest
         .post('/internal/cases/_analyticsV2/reset')
@@ -65,25 +64,26 @@ export default ({ getService }: FtrProviderContext): void => {
         '/internal/cases/_analyticsV2/state'
       );
 
-      // Index should exist again (recreated by the synchronous portion
-      // before the response returned).
+      // The index exists again (recreated by the synchronous
+      // portion before the response returned).
       await waitForCaseIndexExists(es);
       const exists = await es.indices.exists({ index: CASE_INDEX });
       expect(exists).to.eql(true);
 
-      // Wait for the async walk to complete before the test ends —
-      // otherwise the next test's afterEach `resetV2` would race the
-      // in-flight reset task.
+      // Wait for the async walk to complete; otherwise the next
+      // test's afterEach `resetV2` would race the in-flight reset
+      // task.
       await waitForResetComplete(supertest);
     });
 
     it('reports the number of per-space data views deleted', async () => {
-      // Bootstrap the default-space data view by hitting any cases endpoint.
-      // (Lazy bootstrap fires on the request handler context creation.)
+      // Bootstrap the default-space data view by hitting any cases
+      // endpoint. Lazy bootstrap fires on request handler context
+      // creation.
       await createCase(supertestWithoutAuth, getPostCaseRequest(), 200, auth);
 
-      // Give the data-view ensure a moment to land. It's fire-and-forget
-      // via the request handler context.
+      // Give the data-view ensure a moment to land. It runs
+      // fire-and-forget via the request handler context.
       let dataViewExists = false;
       for (let attempt = 0; attempt < 30 && !dataViewExists; attempt++) {
         const result = await es.search({
@@ -112,16 +112,17 @@ export default ({ getService }: FtrProviderContext): void => {
         .expect(202);
 
       expect(response.body).to.have.property('data_views_deleted');
-      // At least one — the default-space view from the createCase above.
-      // (Concurrent test interleaving could in theory cause more, but
-      // afterEach resets state so this test is the only one running here.)
+      // At least one — the default-space view from the createCase
+      // above. Concurrent interleaving could cause more, but
+      // afterEach resets state, so this test is the only one
+      // running here.
       expect(response.body.data_views_deleted).to.be.greaterThan(0);
 
       await waitForResetComplete(supertest);
     });
 
     it('clears reconciliation task state so the follow-up backfill walks every case', async () => {
-      // Setup: create a case, run reconcile to seed the cursor.
+      // Create a case and run reconcile to seed the cursor.
       const oldCase = await createCase(
         supertestWithoutAuth,
         getPostCaseRequest({ title: 'old case' }),
@@ -136,33 +137,33 @@ export default ({ getService }: FtrProviderContext): void => {
         .set(INTERNAL_HEADERS)
         .expect(200);
 
-      // Without /reset, the cursor would now be ahead of `oldCase.created_at`
-      // and a naive periodic tick wouldn't re-emit oldCase. /reset
-      // schedules a full backfill (lastRunAt: undefined → no filter →
-      // walk every case), so the pre-existing case lands in `.cases`
-      // again after the reset task completes.
+      // Without `/reset`, the cursor would now be ahead of
+      // `oldCase.created_at` and a periodic tick wouldn't re-emit
+      // oldCase. `/reset` schedules a full backfill
+      // (lastRunAt: undefined → no filter → walk every case), so
+      // the pre-existing case lands in `.cases` again after the
+      // reset task completes.
       await resetV2(supertest);
 
       await waitForAnalyticsCase(es, oldCase.id, { expect: 'present' });
     });
 
     it('schedules a one-shot reset task whose status is observable via /state.active_reset', async () => {
-      // Schedule a reset and immediately read /state — the task should
-      // be present (idle/running/completed) for at least the brief
-      // window before Task Manager auto-cleans it on success. Whether
-      // we catch it as `idle`, `running`, or it's already gone depends
-      // on timing; what matters is that /state's `active_reset` field
-      // is the documented surface for monitoring the task. We verify
-      // the field exists and converges to `null` (success) within the
+      // Schedule a reset; the task should be visible via
+      // `/state.active_reset` (idle/running/completed) for at least
+      // the brief window before Task Manager auto-cleans it on
+      // success. Catching it as `idle` vs `running` vs already
+      // gone depends on timing — what matters is that the field
+      // exists and converges to `null` (success) within the
       // bootstrap timeout.
       await supertest
         .post('/internal/cases/_analyticsV2/reset')
         .set(INTERNAL_HEADERS)
         .expect(202);
 
-      // After the task completes, Task Manager auto-removes the SO and
-      // /state.active_reset returns null. waitForResetComplete handles
-      // the polling loop.
+      // After the task completes, Task Manager auto-removes the
+      // SO and `/state.active_reset` returns null.
+      // `waitForResetComplete` handles the polling loop.
       const final = await waitForResetComplete(supertest);
       expect(final).to.eql(null);
     });

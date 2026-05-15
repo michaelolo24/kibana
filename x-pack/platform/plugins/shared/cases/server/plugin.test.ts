@@ -32,7 +32,7 @@ function getConfig(overrides: Partial<ConfigType> = {}): ConfigType {
     stack: { enabled: true },
     incrementalId: { enabled: true, taskIntervalMinutes: 10, taskStartDelayMinutes: 10 },
     analytics: { index: { enabled: true } },
-    analyticsV2: { enabled: false, reconciliationIntervalMinutes: 30, enable_debug_mode: false },
+    analyticsV2: { enabled: false, reconciliationIntervalMinutes: 30, enable_admin_routes: false },
     templates: { enabled: true },
     attachments: { enabled: true },
     ...overrides,

@@ -794,7 +794,7 @@ export const mockCasesContract = (): CasesServerStart => ({
     analyticsV2: {
       enabled: false,
       reconciliationIntervalMinutes: 30,
-      enable_debug_mode: false,
+      enable_admin_routes: false,
     },
     incrementalId: {
       enabled: true,

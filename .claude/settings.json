@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana diff x-pack/platform/plugins/shared/cases/server/config.ts)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana show HEAD:x-pack/platform/plugins/shared/cases/server/config.ts)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana show HEAD:x-pack/platform/plugins/shared/cases/server/cases_analytics_v2/reconciliation/index.ts)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana log --oneline x-pack/platform/plugins/shared/cases/server/cases_analytics_v2/)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana status --porcelain x-pack/platform/plugins/shared/cases/server/cases_analytics_v2/)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana show HEAD:x-pack/platform/plugins/shared/cases/server/cases_analytics_v2/routes/index.ts)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana show HEAD:x-pack/platform/plugins/shared/cases/server/cases_analytics_v2/service.ts)",
+      "Bash(node -e \"const m = require\\('/Users/michaelolorunnisola/Dev/kibana/node_modules/@kbn/core/server/mocks'\\); const setup = m.coreMock.createSetup\\(\\); console.log\\(Object.keys\\(setup.http\\)\\); console.log\\(typeof setup.http.createRouter\\);\")"
+    ]
+  }
+}

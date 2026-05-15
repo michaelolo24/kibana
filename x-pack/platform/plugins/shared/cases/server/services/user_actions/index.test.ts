@@ -19,7 +19,7 @@ import type { CaseUserActionWithoutReferenceIds } from '../../../common/types/do
 import type { UserActionEvent } from './types';
 
 import { SECURITY_SOLUTION_OWNER } from '../../../common/constants';
-import { V2_NOOP_ACTIVITY_WRITER } from '../../cases_analytics_v2/writer/activity';
+import { V2_NOOP_ACTIVITY_WRITER } from '../../cases_analytics_v2';
 import { createSOFindResponse } from '../test_utils';
 import {
   casePayload,

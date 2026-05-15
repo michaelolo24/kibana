@@ -13,29 +13,28 @@ import type { CasePersistedAttributes } from '../../common/types/case';
 import type { CasesAnalyticsV2WriterContract } from '../writer';
 
 /**
- * Maximum number of case SOs fetched per ES round-trip. Modest enough
- * that Task Manager's task-runtime budget isn't a concern even on cases
- * with heavy `extended_fields` payloads.
+ * Number of case SOs fetched per ES round-trip. Small enough that Task
+ * Manager's task-runtime budget stays comfortable even on cases with heavy
+ * `extended_fields` payloads.
  */
 const PAGE_SIZE = 100;
 
 /**
- * Sentinel SO-namespaces value meaning "every namespace". The runner's SO
- * client is the unscoped internal client (no spaces extension), so the
- * default behavior of `find` / `openPointInTimeForType` is to look only in
- * the `default` namespace — i.e., the reconciliation walk silently skips
- * every case in every non-default space. Passing `['*']` opts into the
- * cross-namespace path; the SO repository's search DSL builder treats the
- * literal `'*'` as `ALL_NAMESPACES_STRING` and lifts the namespace filter.
- * The same constant feeds both the PIT open call and every paged find so
- * the snapshot and the page reads agree on scope.
+ * SO-namespaces value meaning "every namespace". The runner's SO client is
+ * the unscoped internal client (no spaces extension), so without this the
+ * default `find` / `openPointInTimeForType` behaviour is to look only in
+ * the `default` namespace — silently skipping every case in every other
+ * space. The SO repository's search DSL builder treats `'*'` as
+ * `ALL_NAMESPACES_STRING` and lifts the namespace filter. The same value
+ * feeds both the PIT open call and every paged find so snapshot and page
+ * reads agree on scope.
  */
 const NAMESPACES_ALL: string[] = ['*'];
 
 /**
- * Cap on the per-space breakdown the summary log reports. Heavy-tenant
- * clusters (1000+ spaces) would otherwise produce log lines large enough
- * to break ingest pipelines; capping keeps the line readable while still
+ * Cap on the per-space breakdown reported in the summary log line.
+ * Tenants with thousands of spaces would otherwise emit a log line large
+ * enough to disrupt ingest; this keeps the line readable while still
  * surfacing the top contributors to a noisy tick.
  */
 const SUMMARY_TOP_N_SPACES = 25;
@@ -46,44 +45,44 @@ export interface RunReconciliationDeps {
   writer: CasesAnalyticsV2WriterContract;
   logger: Logger;
   /**
-   * ISO timestamp from the previous successful tick — only cases updated
-   * AFTER this point are walked. `undefined` on the first run, in which
-   * case the runner walks every case (backfill mode). To force a backfill
-   * later, an administrator hits `/reset`, which clears task state.
+   * ISO timestamp from the previous successful tick. Only cases updated
+   * after this point are walked. `undefined` on the first run (backfill
+   * mode, walks every case). `/reset` clears the cursor to force a
+   * backfill later.
    */
   lastRunAt: string | undefined;
   /**
    * Optional sleep between pages, in milliseconds. Default `0` (yield via
    * `setImmediate` only — see the inter-page yield comment below).
    *
-   * Plumbed through from `xpack.cases.analyticsV2.resetPageDelayMs` and
-   * applied **only when this runner is invoked from the reset task**.
-   * The periodic-task code path leaves it at `0` because the periodic
-   * tick is `O(delta)` — bounded, fast, no need to throttle.
+   * Sourced from `xpack.cases.analyticsV2.resetPageDelayMs` and applied
+   * only when this runner is invoked from the reset task. The periodic
+   * task path leaves it at `0` because the periodic tick is `O(delta)` —
+   * bounded and fast, with no need to throttle.
    *
-   * Operators on shared / capacity-constrained clusters set this above
-   * 0 so the post-reset backfill is a gentler trickle into ES instead of
-   * a continuous full-throttle stream for the duration of the walk.
+   * Administrators on shared or capacity-constrained clusters can raise this
+   * so a post-reset backfill trickles into ES instead of running at full
+   * throttle for the duration of the walk.
    */
   pageDelayMs?: number;
   /**
-   * Optional progress callback fired AFTER each page's bulk-upsert
-   * completes successfully. The `processed` value is the cumulative
-   * count for the current walk (NOT a per-page delta) so callers
-   * implementing throttled progress reporting can just write the
-   * latest value into the task SO without bookkeeping.
+   * Optional progress callback fired after each page's bulk-upsert
+   * completes successfully. `processed` is the cumulative count for the
+   * current walk (not a per-page delta) so callers implementing
+   * throttled progress reporting can write the latest value into task
+   * state without bookkeeping.
    *
-   * Periodic-task callers omit this — the periodic tick is short
-   * enough that mid-run progress isn't useful, and any callback
-   * overhead would compound across thousands of ticks per day. The
-   * reset task is the only caller today; it wires this up to a
-   * wall-clock-throttled `bulkUpdateState` so `/state.active_reset.state`
-   * reflects live progress during long backfills.
+   * Periodic-task callers omit this — the periodic tick is short enough
+   * that mid-run progress isn't useful, and any callback overhead would
+   * compound across thousands of ticks per day. The reset task is the
+   * only caller; it wires this up to a wall-clock-throttled
+   * `bulkUpdateState` so `/state.active_reset.state` reflects live
+   * progress during long backfills.
    *
-   * Synchronous + non-blocking: callbacks should NOT do I/O directly
-   * (the runner doesn't await them). The reset task's wiring keeps
-   * the SO write off the critical path via a fire-and-forget
-   * throttled wrapper.
+   * Synchronous and non-blocking: callbacks must not do I/O directly
+   * (the runner doesn't await them). The reset task's wiring keeps the
+   * SO write off the critical path via a fire-and-forget throttled
+   * wrapper.
    */
   onPageComplete?: (info: { processed: number }) => void;
 }
@@ -96,23 +95,22 @@ export interface RunReconciliationResult {
 }
 
 /**
- * Reconciliation tick. Walks every case saved object updated since the
- * last successful tick and re-emits its analytics doc via the writer.
+ * Single reconciliation tick. Walks every case saved object updated since
+ * the last successful tick and re-emits its analytics doc via the writer.
  *
- * **Why this exists.** The primary write path (the SO-service hooks) is
- * fire-and-forget — errors are logged and swallowed so analytics never
- * blocks the user's request. A transient ES blip can therefore leave a
- * case un-mirrored. This task is the durability backstop: every tick
- * re-walks recent activity, and `writer.upsertCase` is idempotent, so
- * misses self-heal silently.
+ * Acts as the durability backstop for the primary write path (SO-service
+ * hooks), which logs and swallows errors so analytics never blocks the
+ * user's request. A transient ES blip can leave a case un-mirrored; every
+ * tick re-walks recent activity and `writer.upsertCase` is idempotent,
+ * so misses repair on the next tick.
  *
- * **Why PIT + searchAfter.** The SO `find` API with `page` caps at
- * `index.max_result_window` (~10k); the first run from an empty cursor
- * (backfill mode) can exceed that. PIT + searchAfter has no such cap.
+ * Uses PIT + `searchAfter` rather than `find` paging because the SO
+ * `find` API caps at `index.max_result_window` (~10k); a backfill from an
+ * empty cursor can exceed that. PIT + `searchAfter` has no such cap.
  *
- * **Cursor advancement.** On successful drain, `last_run_at` advances to
- * the tick start time captured before any I/O. Any case updated *during*
- * the tick lands in the next tick's window. Caller persists the result.
+ * On successful drain, `last_run_at` advances to the tick start time
+ * captured before any I/O — cases updated during the tick land in the
+ * next tick's window. The caller persists the returned cursor.
  */
 export async function runReconciliation({
   savedObjectsClient,
@@ -122,62 +120,61 @@ export async function runReconciliation({
   pageDelayMs = 0,
   onPageComplete,
 }: RunReconciliationDeps): Promise<RunReconciliationResult> {
-  // Capture the wall-clock at tick start. We persist this as the new cursor on
-  // a successful drain so the next tick sees only cases updated *after* this
-  // moment. Captured before any I/O so cases updated while the tick is
-  // running fall into the next window, never get skipped.
+  // Tick start, captured before any I/O. Persisted as the new cursor on a
+  // successful drain so the next tick sees only cases updated after this
+  // moment. Cases updated during the tick fall into the next window
+  // rather than being skipped.
   const tickStartedAt = new Date().toISOString();
 
-  // KQL-ish filter the SO client accepts. `attributes.` prefix is required —
-  // SOs are stored namespaced under their type, so the filter applies inside
-  // that namespace.
+  // KQL filter passed to the SO client. The `attributes.` prefix is
+  // required because SOs are stored namespaced under their type.
   //
-  // **Why the null branch is unconditional.** Newly-created cases land in
-  // the SO store with `updated_at = null` (`transformNewCase` in
-  // common/utils.ts) and stay that way until someone patches the case. A
-  // filter that only matches `updated_at > lastRunAt` would never see them,
-  // and the very scenario this backstop exists for — the fire-and-forget
-  // write hook failed at create time — would stay broken forever for a
-  // case that no one happens to update. Pinning the null branch to
-  // `created_at > lastRunAt` would shrink the per-tick read, but at the
-  // cost of letting any create-and-never-touched case that the writer
-  // missed slip through both clauses permanently (the symptom: after a
-  // `/reset`, only cases the user has patched come back; ancient
-  // never-touched cases disappear). So:
-  //   - clause 1: updated_at > lastRunAt          (existing case, patched)
-  //   - clause 2: updated_at IS MISSING/NULL      (any never-patched case —
-  //                                                re-emit every tick until
-  //                                                it gets patched and
-  //                                                drops out of this branch)
-  // Re-emitting on every tick is safe: `bulkUpsertCasesAwait` is
-  // idempotent, and the un-patched population is normally small (most
-  // cases pick up at least one status / comment edit quickly). Wasted
-  // work is bounded by the un-patched case count, not by total case
-  // volume.
+  // Newly-created cases land in the SO store with `updated_at = null`
+  // (see `transformNewCase` in `common/utils.ts`) and stay that way
+  // until someone patches the case. The cursor-based `updated_at`
+  // range therefore can't catch a never-patched case on its own — the
+  // null branch is the path that picks up newly-created cases the
+  // writer missed at create time.
+  //
+  //   - clause 1: updated_at > lastRunAt
+  //                 (existing case, patched since the previous tick)
+  //   - clause 2: updated_at IS MISSING AND created_at > lastRunAt
+  //                 (never-patched case, created since the previous
+  //                  tick — typically the writer missed it at create
+  //                  time)
+  //
+  // The `created_at > lastRunAt` guard on clause 2 keeps the per-tick
+  // walk bounded by recent activity rather than re-emitting every
+  // never-patched case ever created. Drift between the SO store and
+  // `.cases` for a case that was never patched and was created before
+  // `lastRunAt` (e.g. an out-of-band ES delete) is repaired by
+  // `POST /reset`, which clears the cursor and walks every case.
   //
   // `fromKueryExpression('not <field>:*')` is the standard KQL idiom for
-  // "field is missing or null" — there's no nodeBuilder helper for it.
+  // "field is missing or null"; there's no `nodeBuilder` helper for it.
   const filter = lastRunAt
     ? nodeBuilder.or([
         nodeBuilder.range(`${CASE_SAVED_OBJECT}.attributes.updated_at`, 'gt', lastRunAt),
-        fromKueryExpression(`not ${CASE_SAVED_OBJECT}.attributes.updated_at:*`),
+        nodeBuilder.and([
+          fromKueryExpression(`not ${CASE_SAVED_OBJECT}.attributes.updated_at:*`),
+          nodeBuilder.range(`${CASE_SAVED_OBJECT}.attributes.created_at`, 'gt', lastRunAt),
+        ]),
       ])
     : undefined;
 
-  // Open a PIT (Point-In-Time) so paging is consistent against a fixed
-  // snapshot of the index — concurrent writes don't shift our results.
-  // `namespaces: NAMESPACES_ALL` is required for the same reason as on
-  // the page reads below: omitting it would scope the snapshot to the
-  // `default` namespace under an unscoped internal SO client.
+  // Open a PIT so paging is consistent against a fixed snapshot of the
+  // index — concurrent writes don't shift the results. `NAMESPACES_ALL`
+  // is required for the same reason as on the page reads below: under an
+  // unscoped internal SO client, omitting it scopes the snapshot to the
+  // `default` namespace.
   const pit = await savedObjectsClient.openPointInTimeForType(CASE_SAVED_OBJECT, {
     namespaces: NAMESPACES_ALL,
   });
 
   let processed = 0;
   let searchAfter: SortResults | undefined;
-  // Per-space counts for the summary log line. On a heavily-tenanted cluster
-  // "where did the missing case live?" is much easier to answer when the
-  // reconciliation log already tells you which spaces produced output.
+  // Per-space counts for the summary log line. Lets administrators answer
+  // "where did the missing case live?" without an extra query.
   const processedBySpace = new Map<string, number>();
 
   try {
@@ -185,24 +182,20 @@ export async function runReconciliation({
       const page = await savedObjectsClient.find<CasePersistedAttributes>({
         type: CASE_SAVED_OBJECT,
         filter,
-        // **Must** pass `namespaces: ['*']` here even though our SO client
-        // is the unscoped internal client. The SO repository's `find`
-        // implementation defaults `options.namespaces` to
-        // `[DEFAULT_NAMESPACE_STRING]` when the spaces extension is absent
-        // (see `core/saved-objects/api-server-internal/.../find.ts`), so
-        // an omitted value silently restricts the walk to the `default`
-        // space — every case in every other space gets skipped. The
-        // symptom looks like "reset doesn't actually re-walk anything,"
-        // because in tenants where users create cases in custom spaces
-        // (e.g. `analytics-1`, `analytics-2`, ...) the runner sees zero
-        // matching cases.
+        // Must pass `namespaces: ['*']` even with the unscoped internal
+        // SO client. When the spaces extension is absent the SO
+        // repository's `find` defaults `options.namespaces` to
+        // `[DEFAULT_NAMESPACE_STRING]` (see
+        // `core/saved-objects/api-server-internal/.../find.ts`), silently
+        // restricting the walk to `default` and skipping every case in
+        // every other space.
         namespaces: NAMESPACES_ALL,
-        // No `sortField` — the SO API uses `_shard_doc` by default with a
-        // PIT, which is unique per doc (no ties → no `searchAfter` skips
-        // or dupes when many cases share the same timestamp, e.g. bulk
-        // imports) and is the optimal sort for PIT walks per ES docs.
-        // Result order isn't analytically meaningful — upsert is
-        // idempotent, so any traversal order is correct.
+        // No `sortField` — with a PIT the SO API defaults to `_shard_doc`,
+        // which is unique per doc (no ties → no `searchAfter` skips or
+        // dupes when many cases share the same timestamp, e.g. bulk
+        // imports) and is the recommended sort for PIT walks per the ES
+        // docs. Result order isn't analytically meaningful since upsert
+        // is idempotent.
         perPage: PAGE_SIZE,
         pit: { id: pit.id },
         searchAfter,
@@ -212,44 +205,42 @@ export async function runReconciliation({
         break;
       }
 
-      // Dispatch the entire page as a single `_bulk` request and **await**
-      // its completion before fetching the next page. Two reasons:
-      //   1. Bulk dispatch collapses N ES `index` requests into 1, keeping
-      //      the connection pool from saturating on cold-start / post-reset
-      //      walks that can span tens of thousands of cases.
+      // Dispatch the page as a single `_bulk` request and await it before
+      // fetching the next page:
+      //   1. Bulk dispatch collapses N ES `index` requests into one,
+      //      keeping the connection pool from saturating on cold-start or
+      //      post-reset walks that can span tens of thousands of cases.
       //   2. Awaiting between pages bounds concurrency to one in-flight
-      //      bulk per runner. A per-item fire-and-forget loop could fan
-      //      thousands of writes into ES while the runner kept paging — ES
-      //      indexing-queue overflow → 429s → writer's retry budget
-      //      exhausts → reconciliation drops docs the next tick then has
-      //      to repair. Serializing pages avoids the failure mode
-      //      entirely.
-      // `bulkUpsertCasesAwait` **throws** on bulk-level failure / retry
-      // exhaustion (retryable per-item failures, e.g. 429s, count as
-      // retryable). That propagation is deliberate: it aborts the tick
-      // before we persist the new cursor, so the next tick re-walks the
-      // same window. Permanent per-item failures (mapper errors etc.)
-      // are logged inside the writer but do NOT throw — those cases
-      // can't be repaired by reconciliation regardless and rely on the
-      // case's next update to retry the mirror.
+      //      bulk per runner. A fanout loop could push thousands of
+      //      writes into ES while the runner kept paging, overflowing the
+      //      indexing queue (429s) and exhausting the writer's retry
+      //      budget — reconciliation would then drop docs the next tick
+      //      has to repair.
+      //
+      // `bulkUpsertCasesAwait` throws on bulk-level failure or retry
+      // exhaustion (retryable per-item failures like 429s count as
+      // retryable). The throw aborts the tick before the cursor is
+      // persisted, so the next tick re-walks the same window. Permanent
+      // per-item failures (e.g. mapper errors) are logged inside the
+      // writer but do not throw; those cases can't be repaired by
+      // reconciliation and rely on the case's next update to retry.
       await writer.bulkUpsertCasesAwait(page.saved_objects);
 
       for (const so of page.saved_objects) {
         processed++;
         // Bucket by space for the summary log. Cases SOs are
-        // namespace-scoped (`multiple-isolated`); `namespaces` is always a
-        // single-element array. `??` defaults to 'default' for the
-        // theoretical edge case where the array is empty.
+        // `multiple-isolated`, so `namespaces` is always a single-element
+        // array; `?? 'default'` is a safety net for the theoretical
+        // empty-array edge case.
         const space = so.namespaces?.[0] ?? 'default';
         processedBySpace.set(space, (processedBySpace.get(space) ?? 0) + 1);
       }
 
-      // Live progress signal for callers wiring this into `/state`. We
-      // emit AFTER the bulk-upsert + after-page-counts loop so the
-      // reported value matches what's actually been mirrored to ES,
-      // not what we've merely read from the SO store. Fire-and-forget
-      // — the callback shouldn't throw or do I/O directly, and we
-      // don't await it.
+      // Live progress signal for callers wiring this into `/state`. Fired
+      // after the bulk-upsert and counts loop so the reported value
+      // reflects what's actually been mirrored to ES, not what was merely
+      // read from the SO store. Fire-and-forget: the callback must not
+      // throw or do I/O directly, and the runner doesn't await it.
       onPageComplete?.({ processed });
 
       // The last result's `sort` field is the cursor for the next page.
@@ -260,26 +251,22 @@ export async function runReconciliation({
         break;
       }
 
-      // Yield to the event loop between pages. Without this, a long walk
-      // (post-`/reset` backfill, or any tick with thousands of cases) ends
-      // up running back-to-back synchronous CPU bursts (doc-build +
-      // operations-array + ES client NDJSON serialization) inside the
-      // same handler / task-runner window. Each await on `find` /
-      // `bulkUpsert` only yields for the duration of the I/O — when the
-      // I/O finishes fast (warm cache, healthy cluster) the next page's
-      // CPU runs immediately, accumulating a single long ELU span that
-      // trips Kibana's `Event loop utilization exceeded threshold`
-      // warning and starves concurrent requests.
+      // Yield to the event loop between pages. Each await on `find` /
+      // `bulkUpsert` only yields for the duration of its I/O; on a warm
+      // cache or healthy cluster the I/O resolves fast enough that the
+      // next page's CPU work (doc-build + operations array + ES client
+      // NDJSON serialization) runs back-to-back, accumulating a single
+      // long ELU span that trips Kibana's "Event loop utilization
+      // exceeded threshold" warning and starves concurrent requests.
       //
-      // Two modes:
       //   - `pageDelayMs == 0` (default; periodic-task path): yield via
-      //     `setImmediate`. Schedules onto the macrotask queue AFTER
-      //     pending I/O, so any other request waiting for an I/O reply
-      //     gets serviced before our next page begins. Sub-millisecond.
-      //   - `pageDelayMs > 0` (reset-task path with operator-tuned
-      //     throttle): sleep for the configured duration. Trades wall-
-      //     clock walk time for reduced ES indexing pressure during a
-      //     long backfill. See `xpack.cases.analyticsV2.resetPageDelayMs`.
+      //     `setImmediate`. Schedules onto the macrotask queue after
+      //     pending I/O so other requests waiting on I/O are serviced
+      //     before the next page begins. Sub-millisecond.
+      //   - `pageDelayMs > 0` (reset-task path with administrator-tuned
+      //     throttle): sleep for the configured duration. Trades
+      //     wall-clock walk time for reduced ES indexing pressure during
+      //     a long backfill. See `xpack.cases.analyticsV2.resetPageDelayMs`.
       if (pageDelayMs > 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, pageDelayMs));
       } else {
@@ -291,10 +278,8 @@ export async function runReconciliation({
     await savedObjectsClient.closePointInTime(pit.id);
   }
 
-  // Per-space breakdown for the log line — top-N by count, descending,
-  // so heavy-tenant clusters stay readable. Sort cost stays bounded at
-  // O(S log SUMMARY_TOP_N_SPACES) regardless of space cardinality, and
-  // total log line stays bounded too.
+  // Top-N spaces by processed count. Bounded selection keeps the log
+  // line readable at thousands of spaces.
   const perSpaceSummary = formatTopSpaces(processedBySpace);
 
   logger.info(
@@ -306,22 +291,17 @@ export async function runReconciliation({
   return { newLastRunAt: tickStartedAt, processed };
 }
 
-/**
- * Pulls the `sort` cursor off the last result in a page. Extracted so the
- * runner's loop stays readable; `sort` on a `SavedObjectsFindResult` is
- * the ES `SortResults` array we feed back as `searchAfter` next page.
- */
+/** Last result's `sort` field — the cursor fed back as `searchAfter`. */
 function getLastSort<T>(results: Array<SavedObjectsFindResult<T>>): SortResults | undefined {
   return results[results.length - 1]?.sort;
 }
 
 /**
- * Format the top-N per-space counts as ` by_space={a=10, b=8, ...}` for
+ * Top-N per-space counts formatted as ` by_space={a=10, b=8, ...}` for
  * the summary log. Returns an empty string when no cases were processed.
  *
- * Bounded selection (partial-sort by hand) keeps cost at O(S × N) rather
- * than O(S log S) — matters at thousands of spaces × short reconciliation
- * intervals.
+ * Uses a bounded partial-sort so cost stays `O(S × N)` rather than
+ * `O(S log S)` at thousands of spaces.
  */
 function formatTopSpaces(processedBySpace: Map<string, number>): string {
   if (processedBySpace.size === 0) return '';
@@ -330,13 +310,13 @@ function formatTopSpaces(processedBySpace: Map<string, number>): string {
   for (const entry of processedBySpace) {
     if (top.length < SUMMARY_TOP_N_SPACES) {
       top.push(entry);
-      continue;
+    } else {
+      let minIdx = 0;
+      for (let i = 1; i < top.length; i++) {
+        if (top[i][1] < top[minIdx][1]) minIdx = i;
+      }
+      if (entry[1] > top[minIdx][1]) top[minIdx] = entry;
     }
-    let minIdx = 0;
-    for (let i = 1; i < top.length; i++) {
-      if (top[i][1] < top[minIdx][1]) minIdx = i;
-    }
-    if (entry[1] > top[minIdx][1]) top[minIdx] = entry;
   }
   top.sort((a, b) => b[1] - a[1]);
 

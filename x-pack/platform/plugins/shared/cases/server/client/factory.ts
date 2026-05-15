@@ -64,10 +64,10 @@ import type { ConfigType } from '../config';
 import type { CasesEventBus } from '../events/event_bus';
 import { getSavedObjectsTypes } from '../../common';
 import type {
+  CasesActivityV2WriterContract,
   CasesAnalyticsV2DataViewRefresher,
   CasesAnalyticsV2WriterContract,
 } from '../cases_analytics_v2';
-import type { CasesActivityV2WriterContract } from '../cases_analytics_v2/writer/activity';
 
 interface CasesClientFactoryArgs {
   securityPluginSetup: SecurityPluginSetup;

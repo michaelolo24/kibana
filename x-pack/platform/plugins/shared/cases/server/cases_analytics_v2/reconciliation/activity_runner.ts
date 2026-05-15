@@ -13,31 +13,27 @@ import type { UserActionPersistedAttributes } from '../../common/types/user_acti
 import type { CasesActivityV2WriterContract } from '../writer/activity';
 
 /**
- * Maximum number of user-action SOs fetched per ES round-trip. Aligned
- * with the cases runner's page size (100) — initially set to 200 on the
- * theory that user-actions are smaller than cases, but the per-page sync
- * CPU (doc-build + ES client NDJSON serialization) is dominated by the
- * `JSON.stringify(payload)` for the polymorphic `payload` field, which
- * can be large for bulk-attachment or push payloads. 100 keeps the
- * worst-case sync span between event-loop yields bounded; throughput is
- * limited by ES bulk roundtrip latency, not page count.
+ * User-action SOs fetched per ES round-trip. Matched to the cases runner's
+ * page size. The per-page sync CPU is dominated by `JSON.stringify` over
+ * the polymorphic `payload` field, which can be large for bulk-attachment
+ * or push payloads — 100 keeps the worst-case sync span between event-loop
+ * yields bounded; throughput is limited by ES bulk roundtrip latency, not
+ * page count.
  */
 const PAGE_SIZE = 100;
 
 /**
- * Sentinel SO-namespaces value meaning "every namespace". Same rationale
- * as the cases runner — the unscoped internal client defaults to the
- * `default` namespace; explicit `['*']` opts every space in. Keep the
- * value identical to the cases runner's sentinel so future changes
- * (e.g. tightening the contract) catch both surfaces in one search.
+ * SO-namespaces value meaning "every namespace". Same rationale as in the
+ * cases runner: the unscoped internal client defaults to the `default`
+ * namespace; explicit `['*']` opts every space in. Kept identical to the
+ * cases runner's value so a future change to the contract can be found
+ * with one search.
  */
 const NAMESPACES_ALL: string[] = ['*'];
 
 /**
- * Cap on the per-space breakdown the summary log reports. Heavy-tenant
- * clusters (1000+ spaces) would otherwise produce log lines large enough
- * to break ingest pipelines; capping keeps the line readable while still
- * surfacing the top contributors to a noisy tick.
+ * Cap on the per-space breakdown reported in the summary log line. Same
+ * rationale as in the cases runner.
  */
 const SUMMARY_TOP_N_SPACES = 25;
 
@@ -47,25 +43,24 @@ export interface RunActivityReconciliationDeps {
   activityWriter: CasesActivityV2WriterContract;
   logger: Logger;
   /**
-   * ISO timestamp from the previous successful tick — only user actions
-   * created AFTER this point are walked. `undefined` on the first run, in
-   * which case the runner walks every user action (backfill mode). To
-   * force a backfill later, an administrator hits `/reset`.
+   * ISO timestamp from the previous successful tick. Only user actions
+   * created after this point are walked. `undefined` on the first run
+   * (backfill mode, walks every user action). `/reset` clears the cursor
+   * to force a backfill later.
    */
   lastRunAt: string | undefined;
   /**
    * Optional sleep between pages, in milliseconds. Default `0`. Same
-   * semantics and rationale as the cases runner — see its `pageDelayMs`
-   * docs. The activity surface is the heavier of the two by ~15× in
-   * measured tenants, so this knob has more impact on the activity
-   * walk's wall-clock than on the cases walk.
+   * semantics as the cases runner's `pageDelayMs`. Activity volume
+   * outpaces cases volume by ~15× in measured tenants, so this knob has
+   * a larger wall-clock impact on the activity walk.
    */
   pageDelayMs?: number;
   /**
    * Optional progress callback. Same shape and semantics as the cases
-   * runner's `onPageComplete` — see its docs. Fired after each page's
-   * bulk-upsert with the cumulative `processed` count. Synchronous;
-   * callers do their own throttling for any downstream I/O.
+   * runner's `onPageComplete`. Fired after each page's bulk-upsert with
+   * the cumulative `processed` count. Synchronous; callers do their own
+   * throttling for downstream I/O.
    */
   onPageComplete?: (info: { processed: number }) => void;
 }
@@ -82,20 +77,21 @@ export interface RunActivityReconciliationResult {
  * created since the last successful tick and re-emits its analytics doc
  * via the writer.
  *
- * **Why this is `created_at`-only.** User actions are immutable at the SO
- * layer — once written, they're never patched. There is no `updated_at`
- * field to consult; the cases runner's `updated_at IS NULL` branch (which
- * exists to catch never-patched cases) doesn't apply. A single
- * `created_at > lastRunAt` clause is both necessary and sufficient.
+ * Filtered on `created_at` only because user actions are immutable at the
+ * SO layer — once written, they're never patched, so there is no
+ * `updated_at` to consult. The cases runner's split filter (cursor on
+ * `updated_at`, plus a `updated_at IS MISSING AND created_at > lastRunAt`
+ * branch for never-patched cases) collapses to just the `created_at`
+ * cursor here.
  *
- * **Cascade-on-case-delete is NOT handled here.** When a case is deleted,
- * its user-actions SOs are cascaded by the SO layer; reconciliation walks
+ * Cascade-on-case-delete is not handled here. When a case is deleted, its
+ * user-action SOs are cascaded by the SO layer; reconciliation walks
  * forward in time from the cursor and never sees the gap. The activity
  * writer's `bulkDeleteActionsByCaseIds` path (called from
  * `CasesService.deleteCase` and `bulkDeleteCaseEntities`) is the only
- * path that drops orphaned analytics docs. If we ever lose those
- * cascades, the activity index ends up with stale rows — and there's no
- * cheap way to detect that here without re-walking every SO.
+ * path that drops orphaned analytics docs — if those cascades are ever
+ * lost, the activity index ends up with stale rows and there's no cheap
+ * way to detect that here without re-walking every SO.
  */
 export async function runActivityReconciliation({
   savedObjectsClient,
@@ -105,13 +101,13 @@ export async function runActivityReconciliation({
   pageDelayMs = 0,
   onPageComplete,
 }: RunActivityReconciliationDeps): Promise<RunActivityReconciliationResult> {
-  // Capture the wall-clock at tick start. Persisted as the new cursor on
-  // a successful drain so the next tick sees only user actions created
-  // *after* this moment. Captured before any I/O so user actions
-  // created while the tick is running fall into the next window.
+  // Tick start, captured before any I/O. Persisted as the new cursor on
+  // a successful drain so user actions created during the tick fall into
+  // the next window rather than being skipped.
   const tickStartedAt = new Date().toISOString();
 
-  // Single clause — see "created_at-only" rationale in the function docstring.
+  // Single clause — see the function docstring for why `created_at` is
+  // sufficient.
   const filter = lastRunAt
     ? nodeBuilder.range(
         `${CASE_USER_ACTION_SAVED_OBJECT}.attributes.created_at`,
@@ -120,19 +116,16 @@ export async function runActivityReconciliation({
       )
     : undefined;
 
-  // Open a PIT (Point-In-Time) so paging is consistent against a fixed
-  // snapshot of the index — concurrent writes don't shift our results.
-  // `namespaces: NAMESPACES_ALL` is required for the same reason as in
-  // the cases runner: an unscoped client otherwise scopes to `default`.
+  // Open a PIT for consistent paging against a fixed snapshot.
+  // `NAMESPACES_ALL` is required because an unscoped internal SO client
+  // otherwise scopes to `default`. See the cases runner for details.
   const pit = await savedObjectsClient.openPointInTimeForType(CASE_USER_ACTION_SAVED_OBJECT, {
     namespaces: NAMESPACES_ALL,
   });
 
   let processed = 0;
   let searchAfter: SortResults | undefined;
-  // Per-space counts for the summary log line. Same rationale as the
-  // cases runner — heavy-tenant clusters benefit from "where did this
-  // tick's volume come from" being in the log line itself.
+  // Per-space counts for the summary log line.
   const processedBySpace = new Map<string, number>();
 
   try {
@@ -140,14 +133,14 @@ export async function runActivityReconciliation({
       const page = await savedObjectsClient.find<UserActionPersistedAttributes>({
         type: CASE_USER_ACTION_SAVED_OBJECT,
         filter,
-        // **Must** pass `namespaces: ['*']` here even though our SO client
-        // is the unscoped internal client. See the cases runner for the
-        // detailed explanation; the symptom is identical (every user
-        // action in every non-default space gets silently skipped).
+        // Required even with the unscoped internal SO client — see the
+        // cases runner for the detailed explanation. Without it, every
+        // user action in every non-default space is silently skipped.
         namespaces: NAMESPACES_ALL,
-        // No `sortField` — defaults to `_shard_doc` under PIT (unique per
-        // doc, optimal for searchAfter walks). User-action analytics docs
-        // are idempotent on `_id`, so traversal order isn't meaningful.
+        // No `sortField` — under PIT the SO API defaults to `_shard_doc`
+        // (unique per doc, optimal for `searchAfter` walks). Analytics
+        // docs are idempotent on `_id`, so traversal order isn't
+        // meaningful.
         perPage: PAGE_SIZE,
         pit: { id: pit.id },
         searchAfter,
@@ -157,11 +150,10 @@ export async function runActivityReconciliation({
         break;
       }
 
-      // Dispatch the entire page as a single `_bulk` request and **await**
-      // its completion before fetching the next page. Same rationale as
-      // the cases runner — bounded concurrency, single round-trip per
-      // page, and `bulkUpsertActionsAwait` propagates retryable failures
-      // so a transient blip pins the cursor and forces a re-walk.
+      // Dispatch the page as a single `_bulk` request and await it
+      // before fetching the next page. Same rationale as in the cases
+      // runner: bounded concurrency, one round-trip per page, retryable
+      // failures pin the cursor and force a re-walk.
       await activityWriter.bulkUpsertActionsAwait(page.saved_objects);
 
       for (const so of page.saved_objects) {
@@ -171,7 +163,7 @@ export async function runActivityReconciliation({
       }
 
       // Live progress signal — see the matching call in `runner.ts`
-      // for the rationale (post-upsert, post-counts, fire-and-forget).
+      // (post-upsert, post-counts, fire-and-forget).
       onPageComplete?.({ processed });
 
       searchAfter = getLastSort(page.saved_objects);
@@ -181,11 +173,9 @@ export async function runActivityReconciliation({
       }
 
       // Yield to the event loop between pages — see the matching comment
-      // in `runner.ts` for the full rationale. The activity surface is
-      // the heaviest reconciliation surface (user-actions outnumber
-      // cases ~15:1 in measured tenants), so this yield matters more
-      // here than on the cases runner: a backfill walk is otherwise a
-      // many-page-back-to-back sync-CPU train inside a single handler.
+      // in `runner.ts`. User actions outnumber cases ~15:1 in measured
+      // tenants, so this yield matters more here: a backfill walk is
+      // otherwise a long sync-CPU train inside a single handler.
       if (pageDelayMs > 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, pageDelayMs));
       } else {
@@ -213,12 +203,12 @@ function getLastSort<T>(results: Array<SavedObjectsFindResult<T>>): SortResults 
 }
 
 /**
- * Format the top-N per-space counts as ` by_space={a=10, b=8, ...}` for
+ * Top-N per-space counts formatted as ` by_space={a=10, b=8, ...}` for
  * the summary log. Returns an empty string when no docs were processed.
  *
- * Mirrors the cases runner's helper exactly; not extracted because the
- * surfaces evolve independently and a shared helper invites accidental
- * coupling — see the same note in the cases runner.
+ * Mirrors the cases runner's helper. Not extracted to a shared helper
+ * because the two surfaces evolve independently and a shared helper would
+ * couple them.
  */
 function formatTopSpaces(processedBySpace: Map<string, number>): string {
   if (processedBySpace.size === 0) return '';
@@ -227,13 +217,13 @@ function formatTopSpaces(processedBySpace: Map<string, number>): string {
   for (const entry of processedBySpace) {
     if (top.length < SUMMARY_TOP_N_SPACES) {
       top.push(entry);
-      continue;
+    } else {
+      let minIdx = 0;
+      for (let i = 1; i < top.length; i++) {
+        if (top[i][1] < top[minIdx][1]) minIdx = i;
+      }
+      if (entry[1] > top[minIdx][1]) top[minIdx] = entry;
     }
-    let minIdx = 0;
-    for (let i = 1; i < top.length; i++) {
-      if (top[i][1] < top[minIdx][1]) minIdx = i;
-    }
-    if (entry[1] > top[minIdx][1]) top[minIdx] = entry;
   }
   top.sort((a, b) => b[1] - a[1]);
 
