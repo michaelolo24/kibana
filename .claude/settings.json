@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(defuddle parse *)",
+      "Bash(npm install *)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana log --oneline --follow -10 -- src/core/packages/usage-data/server-internal/src/core_usage_stats_client.ts)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana show 7bbe92f08550 -- src/core/packages/usage-data/server-internal/src/core_usage_stats_client.ts)",
+      "Bash(git -C /Users/michaelolorunnisola/Dev/kibana log --oneline --follow -10 -- x-pack/platform/plugins/shared/cases/server/routes/api/utils.ts)"
+    ],
+    "additionalDirectories": [
+      "/Users/michaelolorunnisola/Dev/security-portal"
+    ]
+  }
+}

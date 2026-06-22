@@ -59,7 +59,7 @@ describe('Utils', () => {
 
   describe('logDeprecatedEndpoint', () => {
     const logger = loggingSystemMock.createLogger();
-    const kibanaHeader = { 'kbn-version': '8.1.0', referer: 'test' };
+    const kibanaHeader = { 'kbn-version': '8.1.0', 'x-elastic-internal-origin': 'Kibana' };
 
     beforeEach(() => {
       jest.clearAllMocks();
